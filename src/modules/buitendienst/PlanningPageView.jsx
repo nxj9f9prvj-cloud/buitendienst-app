@@ -383,7 +383,7 @@ export default function MijnPlanningPage() {
   const { logoUrl, naam } = useOrganisatie();
 
   // mini-router
-  const [page, setPage] = useState("planning"); // planning | alleWerkbonnen
+  const [page, setPage] = useState("planning"); // planning | werkbonnen | portaal | instellingen
   const [alleBonnenContext, setAlleBonnenContext] = useState(null);
 
   // medewerker
@@ -1535,7 +1535,7 @@ export default function MijnPlanningPage() {
       huisnummer: selectedBon?.werk_huisnummer ?? null,
       werkbonnummer: selectedBon?.werkbonnummer ?? null,
     });
-    setPage("alleWerkbonnen");
+    setPage("werkbonnen");
   }
 
   function openEerdereBonnen() {
@@ -1545,11 +1545,81 @@ export default function MijnPlanningPage() {
       werkbonnummer: selectedBon?.werkbonnummer ?? null,
       eerdere: buildEerdereBonnen(selectedBon?.werkbonnummer),
     });
-    setPage("alleWerkbonnen");
+    setPage("werkbonnen");
+  }
+
+  // ===== Bottom navigation icons =====
+  const NAV_ITEMS = [
+    {
+      id: "planning",
+      label: "Planning",
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+          <line x1="8" y1="14" x2="8" y2="14" strokeWidth="2.5" />
+          <line x1="12" y1="14" x2="12" y2="14" strokeWidth="2.5" />
+          <line x1="16" y1="14" x2="16" y2="14" strokeWidth="2.5" />
+        </svg>
+      ),
+    },
+    {
+      id: "werkbonnen",
+      label: "Werkbonnen",
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+          <line x1="16" y1="13" x2="8" y2="13" />
+          <line x1="16" y1="17" x2="8" y2="17" />
+          <polyline points="10 9 9 9 8 9" />
+        </svg>
+      ),
+    },
+    {
+      id: "portaal",
+      label: "Portaal",
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+          <circle cx="12" cy="7" r="4" />
+        </svg>
+      ),
+    },
+    {
+      id: "instellingen",
+      label: "Instellingen",
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      ),
+    },
+  ];
+
+  function renderBottomNav() {
+    return (
+      <nav className="app-bottom-nav" aria-label="Navigatie">
+        {NAV_ITEMS.map((item) => (
+          <button
+            key={item.id}
+            className={`app-bottom-nav__item${page === item.id ? " app-bottom-nav__item--active" : ""}`}
+            onClick={() => setPage(item.id)}
+            aria-label={item.label}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+    );
   }
 
   // ===== Alle Werkbonnen pagina =====
-  if (page === "alleWerkbonnen") {
+  if (page === "werkbonnen") {
     const title =
       alleBonnenContext?.type === "historie_op_adres"
         ? "Historie op dit adres"
@@ -1558,7 +1628,7 @@ export default function MijnPlanningPage() {
         : "Alle Werkbonnen";
 
     return (
-      <div style={{ padding: 16, background: THEME.bg, minHeight: "100vh" }}>
+      <div style={{ padding: 16, paddingBottom: 96, background: THEME.bg, minHeight: "100vh" }}>
         {/* Zelfde header als planning-scherm */}
         <div
           style={{
@@ -1586,17 +1656,6 @@ export default function MijnPlanningPage() {
               <div style={{ fontSize: 12, opacity: 0.75 }}>Ingelogd als: {user?.email ?? ""} ({medewerker?.naam || "—"})</div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => { window.location.href = '/app/medewerkersportaal' }}
-            style={{ marginLeft: "auto", padding: "10px 12px", borderRadius: 12, border: `1px solid ${THEME.border}`, background: 'var(--app-panel)', color: "var(--app-text)", fontWeight: "normal" }}
-            title="Open medewerkersportaal"
-          >
-            Medewerkersportaal
-          </button>
-          <button onClick={logout} style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${THEME.brand}`, background: THEME.brand, color: "white", fontWeight: "normal" }}>
-            Uitloggen
-          </button>
         </div>
 
         <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -1777,6 +1836,163 @@ export default function MijnPlanningPage() {
             </div>
           </div>
         ) : null}
+        {renderBottomNav()}
+      </div>
+    );
+  }
+
+  // ===== Portaal pagina =====
+  if (page === "portaal") {
+    return (
+      <div style={{ padding: 16, paddingBottom: 96, background: THEME.bg, minHeight: "100vh" }}>
+        <div
+          style={{
+            padding: 12,
+            border: `1px solid ${THEME.border}`,
+            borderRadius: 14,
+            background: 'var(--app-panel)',
+            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <img
+            src={logoUrl || '/logo/logo.png'}
+            alt={naam || 'Logo'}
+            style={{ height: 40, width: "auto", maxWidth: 160, objectFit: "contain", objectPosition: "left center", opacity: 0.9, flexShrink: 0 }}
+            onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
+          />
+          <div>
+            <div style={{ fontWeight: "normal", color: THEME.brand }}>Medewerkersportaal</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>Ingelogd als: {user?.email ?? ""}</div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 20,
+            borderRadius: 14,
+            border: `1px solid ${THEME.border}`,
+            background: 'var(--app-panel)',
+            textAlign: "center",
+            color: "var(--app-muted, rgba(148,163,184,0.8))",
+            fontSize: 14,
+            lineHeight: 1.6,
+          }}
+        >
+          <div style={{ fontSize: 40, marginBottom: 12 }}>👤</div>
+          <div style={{ fontWeight: "normal", color: "var(--app-text)", marginBottom: 8 }}>Medewerkersportaal</div>
+          <div style={{ marginBottom: 16 }}>Hier komt het medewerkersportaal. Loonstroken, rooster en persoonlijke gegevens.</div>
+          <button
+            type="button"
+            onClick={() => { window.open('/app/medewerkersportaal', '_blank') }}
+            style={{
+              padding: "10px 20px",
+              borderRadius: 12,
+              border: `1px solid ${THEME.border}`,
+              background: 'var(--app-panel)',
+              color: "var(--app-text)",
+              fontWeight: "normal",
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            Open in browser →
+          </button>
+        </div>
+        {renderBottomNav()}
+      </div>
+    );
+  }
+
+  // ===== Instellingen pagina =====
+  if (page === "instellingen") {
+    return (
+      <div style={{ padding: 16, paddingBottom: 96, background: THEME.bg, minHeight: "100vh" }}>
+        <div
+          style={{
+            padding: 12,
+            border: `1px solid ${THEME.border}`,
+            borderRadius: 14,
+            background: 'var(--app-panel)',
+            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
+            marginBottom: 16,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <img
+            src={logoUrl || '/logo/logo.png'}
+            alt={naam || 'Logo'}
+            style={{ height: 40, width: "auto", maxWidth: 160, objectFit: "contain", objectPosition: "left center", opacity: 0.9, flexShrink: 0 }}
+            onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
+          />
+          <div>
+            <div style={{ fontWeight: "normal", color: THEME.brand }}>Instellingen</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>{user?.email ?? ""}</div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            borderRadius: 14,
+            border: `1px solid ${THEME.border}`,
+            background: 'var(--app-panel)',
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "16px 16px 4px", fontSize: 11, fontWeight: "normal", opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Account
+          </div>
+          <div style={{ padding: "12px 16px", borderTop: `1px solid ${THEME.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div>
+              <div style={{ fontWeight: "normal", fontSize: 14 }}>Ingelogd als</div>
+              <div style={{ fontSize: 12, opacity: 0.65, marginTop: 2 }}>{user?.email ?? "—"}</div>
+            </div>
+          </div>
+          {medewerker && (
+            <div style={{ padding: "12px 16px", borderTop: `1px solid ${THEME.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontWeight: "normal", fontSize: 14 }}>Naam</div>
+                <div style={{ fontSize: 12, opacity: 0.65, marginTop: 2 }}>{medewerker.naam}</div>
+              </div>
+            </div>
+          )}
+          <div style={{ padding: "12px 16px", borderTop: `1px solid ${THEME.border}` }}>
+            <button
+              type="button"
+              onClick={logout}
+              style={{
+                width: "100%",
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: `1px solid rgba(239,68,68,0.4)`,
+                background: "rgba(239,68,68,0.08)",
+                color: "#f87171",
+                fontWeight: "normal",
+                fontSize: 14,
+                cursor: "pointer",
+                textAlign: "center",
+              }}
+            >
+              Uitloggen
+            </button>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 14, border: `1px solid ${THEME.border}`, background: 'var(--app-panel)' }}>
+          <div style={{ fontSize: 11, fontWeight: "normal", opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
+            App-informatie
+          </div>
+          <div style={{ fontSize: 13, opacity: 0.6, display: "flex", flexDirection: "column", gap: 6 }}>
+            <div>Montiqu Buitendienst</div>
+            <div>Versie 1.0.0</div>
+          </div>
+        </div>
+        {renderBottomNav()}
       </div>
     );
   }
@@ -1784,7 +2000,7 @@ export default function MijnPlanningPage() {
   // ===== planning scherm =====
   return (
     <div
-      style={{ padding: "0 0 16px", background: THEME.bg, minHeight: "100vh" }}
+      style={{ padding: "0 0 96px", background: THEME.bg, minHeight: "100vh" }}
       data-page="buitendienst-planning"
     >
       {/* Header card */}
@@ -1827,37 +2043,6 @@ export default function MijnPlanningPage() {
             </div>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => { window.location.href = '/app/medewerkersportaal' }}
-          style={{
-            marginLeft: "auto",
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: `1px solid ${THEME.border}`,
-            background: 'var(--app-panel)',
-            color: "var(--app-text)",
-            fontWeight: "normal",
-          }}
-          title="Open medewerkersportaal"
-        >
-          Medewerkersportaal
-        </button>
-
-        <button
-          onClick={logout}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: `1px solid ${THEME.brand}`,
-            background: THEME.brand,
-            color: "white",
-            fontWeight: "normal",
-          }}
-        >
-          Uitloggen
-        </button>
       </div>
 
       {medewerkerErr ? <div style={{ color: "red", marginTop: 8 }}>{medewerkerErr}</div> : null}
@@ -2694,6 +2879,8 @@ export default function MijnPlanningPage() {
           </div>
         </div>
       ) : null}
+
+      {renderBottomNav()}
     </div>
   );
 }

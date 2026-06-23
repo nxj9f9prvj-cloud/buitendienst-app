@@ -99,3 +99,43 @@ a {
 a:hover {
   color: rgba(226, 232, 240, 0.95);
 }
+
+/* ── Native bottom navigation bar ───────────────────────────────────────── */
+.app-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  background: #060d1a;
+  border-top: 1px solid rgba(151, 170, 196, 0.14);
+  display: flex;
+  align-items: stretch;
+  z-index: 200;
+}
+
+.app-bottom-nav__item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 4px 8px;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: rgba(148, 163, 184, 0.6);
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-bottom-nav__item:active {
+  opacity: 0.7;
+}
+
+.app-bottom-nav__item--active {
+  color: #2b89ff;
+}
