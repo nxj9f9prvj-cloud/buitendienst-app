@@ -1,11 +1,72 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+
+  --shadow-sm: 0 8px 20px rgba(8, 15, 30, 0.22);
+  --shadow-md: 0 16px 36px rgba(8, 15, 30, 0.28);
+  --shadow-lg: 0 28px 72px rgba(8, 15, 30, 0.34);
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 2rem;
+
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 280ms ease;
+
+  color-scheme: dark;
+  --app-bg: #08111f;
+  --app-bg2: #0c1729;
+  --app-bg3: #101d31;
+  --app-panel: rgba(12, 23, 41, 0.86);
+  --app-panel2: rgba(15, 28, 49, 0.72);
+  --app-panel-strong: rgba(18, 34, 57, 0.92);
+  --app-border: rgba(151, 170, 196, 0.16);
+  --app-border-strong: rgba(151, 170, 196, 0.3);
+
+  --app-text: #eff6ff;
+  --app-text-strong: #ffffff;
+  --app-muted: rgba(209, 223, 242, 0.78);
+  --app-muted2: rgba(209, 223, 242, 0.56);
+
+  --app-accent: #2b89ff;
+  --app-accent-strong: #60a5fa;
+  --app-accent-soft: rgba(43, 137, 255, 0.2);
+  --app-accent-softer: rgba(43, 137, 255, 0.1);
+  --app-success: #22c55e;
+  --app-success-soft: rgba(34, 197, 94, 0.18);
+  --app-warning: #f59e0b;
+  --app-warning-soft: rgba(245, 158, 11, 0.18);
+  --app-danger: #ef4444;
+  --app-danger-soft: rgba(239, 68, 68, 0.18);
+  --app-neutral-soft: rgba(148, 163, 184, 0.14);
+
+  color: var(--app-text);
+  background-color: var(--app-bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -13,56 +74,23 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
   min-height: 100vh;
+  background: linear-gradient(180deg, var(--app-bg3) 0%, var(--app-bg2) 28%, var(--app-bg) 100%);
+  color: var(--app-text);
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+a {
+  font-weight: 400;
+  color: rgba(148, 163, 184, 0.95);
+  text-decoration: inherit;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
+a:hover {
+  color: rgba(226, 232, 240, 0.95);
 }
