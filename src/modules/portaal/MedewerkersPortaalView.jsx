@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../../auth/useAuth'
 import { useErpRole } from '../../auth/useErpRole'
 import { getSupabaseAnonKey, getSupabaseUrl, supabase } from '../../lib/supabaseClient'
+import { Capacitor } from '@capacitor/core'
+import { NativeBiometric } from 'capacitor-native-biometric'
+
+const BIOMETRIC_SERVER = 'nl.montiqu.buitendienst.portaal'
 
 const STEPUP_STORAGE_KEY = 'medewerkersportaal_stepup_v1'
 const CATEGORIE_LABELS = {
@@ -133,7 +137,14 @@ export default function MedewerkersPortaalView() {
   const [registeredPhone, setRegisteredPhone] = useState('')
   const [expandedOlderLoonstrookYears, setExpandedOlderLoonstrookYears] = useState(() => new Set())
 
-  const isAllowedRole = rol === 'buitendienst' || rol === 'binnendienst' || rol === 'admin'
+  // Biometric / Face ID state
+  const [biometricAvailable, setBiometricAvailable] = useState(false)
+  const [biometricSaved, setBiometricSaved] = useState(false)
+  const [biometricLoading, setBiometricLoading] = useState(false)
+  const [biometricError, setBiometricError] = useState('')
+  const [offerSaveBiometric, setOfferSaveBiometric] = useState(false)
+
+  const isAllowedRole = rol === 'buitendienst' || rol === 'binnendienst' || rol === 'admin' || rol === 'monteur'
   const currentCalendarYear = new Date().getFullYear()
 
   const { overigeDocumenten, loonstrokenByYear } = useMemo(() => {
@@ -172,7 +183,78 @@ export default function MedewerkersPortaalView() {
     setStepUpToken(null)
     setStepUpExpiresAt(null)
     safeSessionStorageRemove(STEPUP_STORAGE_KEY)
+    setOfferSaveBiometric(false)
   }, [])
+
+  // Controleer of biometrie beschikbaar is op dit toestel
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    NativeBiometric.isAvailable()
+      .then(result => {
+        if (result.isAvailable) {
+          setBiometricAvailable(true)
+          // Kijk of er een opgeslagen sessie is
+          NativeBiometric.getCredentials({ server: BIOMETRIC_SERVER })
+            .then(creds => {
+              if (creds?.password) {
+                try {
+                  const { expiresAt } = JSON.parse(creds.password)
+                  if (new Date(expiresAt).getTime() > Date.now()) setBiometricSaved(true)
+                } catch { /* no-op */ }
+              }
+            })
+            .catch(() => { /* geen opgeslagen sessie */ })
+        }
+      })
+      .catch(() => { /* biometrie niet beschikbaar */ })
+  }, [])
+
+  /** Verifieer met Face ID en herstel de opgeslagen step-up sessie */
+  const loginWithBiometric = useCallback(async () => {
+    setBiometricError('')
+    setBiometricLoading(true)
+    try {
+      await NativeBiometric.verifyIdentity({
+        reason: 'Bevestig je identiteit voor het medewerkersportaal',
+        title: 'Montiqu Buitendienst',
+        subtitle: 'Gebruik Face ID of Touch ID',
+        description: 'Uw identiteit wordt bevestigd voor toegang tot uw documenten',
+      })
+      const creds = await NativeBiometric.getCredentials({ server: BIOMETRIC_SERVER })
+      if (!creds?.password) throw new Error('Geen opgeslagen sessie gevonden.')
+      const { token, expiresAt } = JSON.parse(creds.password)
+      if (!token || new Date(expiresAt).getTime() <= Date.now()) {
+        await NativeBiometric.deleteCredentials({ server: BIOMETRIC_SERVER })
+        setBiometricSaved(false)
+        throw new Error('Sessie is verlopen. Verifieer opnieuw via SMS.')
+      }
+      // Herstel step-up sessie
+      setStepUpToken(token)
+      setStepUpExpiresAt(expiresAt)
+      safeSessionStorageSet(STEPUP_STORAGE_KEY, JSON.stringify({ token, expiresAt }))
+    } catch (err) {
+      if (String(err).includes('cancel') || String(err).includes('Cancel')) return
+      setBiometricError(err?.message || 'Biometrische verificatie mislukt.')
+    } finally {
+      setBiometricLoading(false)
+    }
+  }, [])
+
+  /** Sla step-up sessie beveiligd op in Keychain */
+  const saveBiometricSession = useCallback(async (token, expiresAt) => {
+    if (!user?.id || !biometricAvailable) return
+    try {
+      await NativeBiometric.setCredentials({
+        username: user.id,
+        password: JSON.stringify({ token, expiresAt }),
+        server: BIOMETRIC_SERVER,
+      })
+      setBiometricSaved(true)
+    } catch (err) {
+      console.warn('[Biometric] Opslaan mislukt:', err)
+    }
+    setOfferSaveBiometric(false)
+  }, [biometricAvailable, user?.id])
 
   const validateExistingStepUp = useCallback(
     async (token, expiresAt) => {
@@ -347,6 +429,8 @@ export default function MedewerkersPortaalView() {
       safeSessionStorageSet(STEPUP_STORAGE_KEY, JSON.stringify({ token, expiresAt }))
       setSmsCode('')
       setCodeSent(false)
+      // Bied Face ID opslaan aan als beschikbaar
+      if (biometricAvailable && !biometricSaved) setOfferSaveBiometric(true)
     } catch (e) {
       setSmsError(e?.message || 'Controle mislukt.')
     } finally {
@@ -455,18 +539,60 @@ export default function MedewerkersPortaalView() {
         <div style={{ opacity: 0.85 }}>Step-up status: {isStepUpValid ? `geverifieerd (${timeLeftLabel} resterend)` : 'niet geverifieerd'}</div>
       </div>
 
+      {/* Face ID knop (als beschikbaar en sessie opgeslagen) */}
       {!isStepUpValid ? (
-        <div
-          style={{
-            marginTop: 16,
-            padding: 16,
-            borderRadius: 10,
-            border: '1px solid var(--app-border)',
-            background: 'var(--app-panel)',
-            maxWidth: 520,
-          }}
-        >
-          <div style={{ fontWeight: 500, marginBottom: 8 }}>SMS verificatie vereist</div>
+        <>
+      {biometricAvailable && biometricSaved && (
+        <div style={{ marginTop: 16, maxWidth: 520 }}>
+          <button
+            type="button"
+            onClick={loginWithBiometric}
+            disabled={biometricLoading}
+            style={{
+              width: '100%',
+              padding: '14px 16px',
+              borderRadius: 12,
+              border: '1px solid var(--app-accent)',
+              background: 'var(--app-accent)',
+              color: '#fff',
+              fontSize: 15,
+              fontWeight: 500,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            {biometricLoading ? 'Verificeren…' : '🔓 Toegang met Face ID / Touch ID'}
+          </button>
+          {biometricError && <div style={{ marginTop: 8, color: '#dc2626', fontSize: 13 }}>{biometricError}</div>}
+          <button
+            type="button"
+            onClick={() => setBiometricSaved(false)}
+            style={{
+              marginTop: 8, width: '100%', padding: '10px', borderRadius: 10,
+              border: '1px solid var(--app-border)', background: 'transparent',
+              color: 'var(--app-muted)', fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            Liever via SMS verificatie
+          </button>
+        </div>
+      )}
+
+      <div
+        style={{
+          marginTop: 16,
+          padding: 16,
+          borderRadius: 10,
+          border: '1px solid var(--app-border)',
+          background: 'var(--app-panel)',
+          maxWidth: 520,
+          display: biometricAvailable && biometricSaved ? 'none' : 'block',
+        }}
+      >
+        <div style={{ fontWeight: 500, marginBottom: 8 }}>SMS verificatie vereist</div>
           <div style={{ opacity: 0.75, marginBottom: 12 }}>
             Alleen het geregistreerde medewerker-telefoonnummer kan gebruikt worden voor SMS verificatie.
           </div>
@@ -574,8 +700,51 @@ export default function MedewerkersPortaalView() {
 
           {smsError ? <div style={{ marginTop: 10, color: '#dc2626' }}>{smsError}</div> : null}
         </div>
+        </>
       ) : (
         <>
+          {/* Face ID opslaan aanbieding (direct na SMS verificatie) */}
+          {offerSaveBiometric && biometricAvailable && (
+            <div style={{
+              marginTop: 16, padding: 14, borderRadius: 12,
+              border: '1px solid var(--app-accent)',
+              background: 'var(--app-accent-softer, rgba(43,137,255,0.08))',
+              maxWidth: 520,
+              display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <div style={{ fontWeight: 500, fontSize: 14 }}>🔐 Snel toegang met Face ID</div>
+              <div style={{ fontSize: 13, opacity: 0.8 }}>
+                Sla je sessie beveiligd op in de Keychain. De volgende keer log je in met Face ID of Touch ID.
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => saveBiometricSession(stepUpToken, stepUpExpiresAt)}
+                  style={{
+                    padding: '10px 16px', borderRadius: 10,
+                    border: '1px solid var(--app-accent)',
+                    background: 'var(--app-accent)', color: '#fff',
+                    fontSize: 13, cursor: 'pointer', fontWeight: 500,
+                  }}
+                >
+                  Ja, sla op
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOfferSaveBiometric(false)}
+                  style={{
+                    padding: '10px 16px', borderRadius: 10,
+                    border: '1px solid var(--app-border)',
+                    background: 'transparent', color: 'var(--app-muted)',
+                    fontSize: 13, cursor: 'pointer',
+                  }}
+                >
+                  Niet nu
+                </button>
+              </div>
+            </div>
+          )}
+
           <div
             style={{
               marginTop: 16,

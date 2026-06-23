@@ -55,6 +55,9 @@ import LabelBadge from '../../components/LabelBadge'
 import WerkbonnenZoekView from '../werkbonnen/WerkbonnenZoekView'
 import MedewerkersPortaalView from '../portaal/MedewerkersPortaalView'
 import { useAppPrefs } from '../../hooks/useAppPrefs'
+import { PUSH_DEEPLINK_KEY } from '../../hooks/usePushNotifications'
+import { Capacitor } from '@capacitor/core'
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 // ===== THEME (gelijk aan ERP: CSS-variabelen uit index.css) =====
 const THEME = {
   brand: 'var(--app-accent)',
@@ -389,6 +392,19 @@ export default function MijnPlanningPage() {
   // mini-router
   const [page, setPage] = useState("planning"); // planning | werkbonnen | werkbonHistorie | portaal | instellingen
   const [alleBonnenContext, setAlleBonnenContext] = useState(null);
+
+  // Push deep link: open specifieke werkbon na tap op push-melding
+  useEffect(() => {
+    try {
+      const werkbonId = localStorage.getItem(PUSH_DEEPLINK_KEY)
+      if (werkbonId) {
+        localStorage.removeItem(PUSH_DEEPLINK_KEY)
+        setPage("planning")
+        setSelectedBonId(werkbonId)
+      }
+    } catch { /* storage blocked */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // medewerker
   const [medewerker, setMedewerker] = useState(null);
@@ -811,6 +827,31 @@ export default function MijnPlanningPage() {
     setForm((f) => ({ ...f, fotos_urls: [...safeArray(f.fotos_urls), ...uploadedUrls] }));
     setUploadBusy(false);
   }
+  /** Native camera (iOS) of foto-bibliotheek — converteert naar File voor uploadFilesToBucket */
+  async function takeFotoNative(source) {
+    try {
+      const photo = await Camera.getPhoto({
+        resultType: CameraResultType.DataUrl,
+        source: source ?? CameraSource.Prompt,
+        quality: 82,
+        allowEditing: false,
+        width: 1920,
+        presentationStyle: 'fullScreen',
+      })
+      if (!photo?.dataUrl) return
+      const res = await fetch(photo.dataUrl)
+      const blob = await res.blob()
+      const ext = photo.format === 'png' ? 'png' : 'jpg'
+      const file = new File([blob], `foto_${Date.now()}.${ext}`, {
+        type: blob.type || `image/${ext}`,
+      })
+      await uploadFilesToBucket([file])
+    } catch (err) {
+      if (String(err).includes('cancelled') || String(err).includes('canceled')) return
+      setUploadErr(err?.message || 'Camerafout.')
+    }
+  }
+
   /** Zelfde route als ERP: useWerkbonnen.replaceWerkbonMaterieel (delete + insert werkbon_materieel). */
   async function saveMaterialenToWerkbon(werkbonId, materialenArray) {
     const items = safeArray(materialenArray ?? form.materialen)
@@ -2689,18 +2730,49 @@ export default function MijnPlanningPage() {
               {/* FOTO'S */}
               <div style={{ fontWeight: "normal" }}>Foto’s</div>
 
-              <div style={{ marginTop: 8 }}>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  disabled={!canEdit || modalBusy || uploadBusy}
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []);
-                    e.target.value = "";
-                    if (files.length) uploadFilesToBucket(files);
-                  }}
-                />
+              <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {Capacitor.isNativePlatform() ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={!canEdit || modalBusy || uploadBusy}
+                      onClick={() => takeFotoNative(CameraSource.Camera)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "10px 14px", borderRadius: 12,
+                        border: `1px solid ${canEdit ? THEME.brand : THEME.border}`,
+                        background: canEdit && !modalBusy && !uploadBusy ? THEME.brand : "var(--app-panel)",
+                        color: canEdit && !modalBusy && !uploadBusy ? "white" : "var(--app-muted)",
+                        fontWeight: "normal", fontSize: 14, fontFamily: "inherit", cursor: "pointer",
+                      }}
+                    >📷 Maak foto</button>
+                    <button
+                      type="button"
+                      disabled={!canEdit || modalBusy || uploadBusy}
+                      onClick={() => takeFotoNative(CameraSource.Photos)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        padding: "10px 14px", borderRadius: 12,
+                        border: `1px solid ${THEME.border}`,
+                        background: "var(--app-panel)",
+                        color: canEdit ? "var(--app-text)" : "var(--app-muted)",
+                        fontWeight: "normal", fontSize: 14, fontFamily: "inherit", cursor: "pointer",
+                      }}
+                    >🖼 Bibliotheek</button>
+                  </>
+                ) : (
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    disabled={!canEdit || modalBusy || uploadBusy}
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      e.target.value = "";
+                      if (files.length) uploadFilesToBucket(files);
+                    }}
+                  />
+                )}
               </div>
 
               {uploadBusy ? <div style={{ marginTop: 6 }}>Uploaden...</div> : null}

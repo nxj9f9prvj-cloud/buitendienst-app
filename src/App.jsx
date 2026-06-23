@@ -6,6 +6,7 @@ import { useAuth } from './auth/useAuth'
 import { LoginPage } from './pages/LoginPage'
 import PlanningPageView from './modules/buitendienst/PlanningPageView'
 import PublicBon from './PublicBon'
+import { usePushNotifications } from './hooks/usePushNotifications'
 
 function RootRedirect() {
   const { user, loading } = useAuth()
@@ -24,10 +25,17 @@ function NoMatch() {
   )
 }
 
+/** Initialiseer push-notificaties voor ingelogde gebruikers. */
+function PushInit() {
+  usePushNotifications()
+  return null
+}
+
 function App() {
   return (
     <AuthProvider>
       <ErpRoleProvider>
+        <PushInit />
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
