@@ -83,6 +83,11 @@ body {
   min-height: 100vh;
   background: linear-gradient(180deg, var(--app-bg3) 0%, var(--app-bg2) 28%, var(--app-bg) 100%);
   color: var(--app-text);
+  /* iOS safe areas: Dynamic Island (boven) en home indicator (onder) */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 a {
