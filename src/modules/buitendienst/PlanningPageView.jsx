@@ -52,6 +52,9 @@ function roundWerkzaamhedenMinuten(rawMinutes) {
 }
 import { normalizeWerkbonStatus } from '../../lib/normalizeWerkbonStatus'
 import LabelBadge from '../../components/LabelBadge'
+import WerkbonnenZoekView from '../werkbonnen/WerkbonnenZoekView'
+import MedewerkersPortaalView from '../portaal/MedewerkersPortaalView'
+import { useAppPrefs } from '../../hooks/useAppPrefs'
 // ===== THEME (gelijk aan ERP: CSS-variabelen uit index.css) =====
 const THEME = {
   brand: 'var(--app-accent)',
@@ -381,9 +384,10 @@ export default function MijnPlanningPage() {
   const { user, logout } = useAuth();
   const { organisatieId } = useErpRole();
   const { logoUrl, naam } = useOrganisatie();
+  const { prefs, setPref } = useAppPrefs();
 
   // mini-router
-  const [page, setPage] = useState("planning"); // planning | werkbonnen | portaal | instellingen
+  const [page, setPage] = useState("planning"); // planning | werkbonnen | werkbonHistorie | portaal | instellingen
   const [alleBonnenContext, setAlleBonnenContext] = useState(null);
 
   // medewerker
@@ -1535,7 +1539,7 @@ export default function MijnPlanningPage() {
       huisnummer: selectedBon?.werk_huisnummer ?? null,
       werkbonnummer: selectedBon?.werkbonnummer ?? null,
     });
-    setPage("werkbonnen");
+    setPage("werkbonHistorie");
   }
 
   function openEerdereBonnen() {
@@ -1545,7 +1549,7 @@ export default function MijnPlanningPage() {
       werkbonnummer: selectedBon?.werkbonnummer ?? null,
       eerdere: buildEerdereBonnen(selectedBon?.werkbonnummer),
     });
-    setPage("werkbonnen");
+    setPage("werkbonHistorie");
   }
 
   // ===== Bottom navigation icons =====
@@ -1600,13 +1604,19 @@ export default function MijnPlanningPage() {
     },
   ];
 
+  function getActiveTab() {
+    if (page === "werkbonHistorie") return "werkbonnen";
+    return page;
+  }
+
   function renderBottomNav() {
+    const activeTab = getActiveTab();
     return (
       <nav className="app-bottom-nav" aria-label="Navigatie">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
-            className={`app-bottom-nav__item${page === item.id ? " app-bottom-nav__item--active" : ""}`}
+            className={`app-bottom-nav__item${activeTab === item.id ? " app-bottom-nav__item--active" : ""}`}
             onClick={() => setPage(item.id)}
             aria-label={item.label}
           >
@@ -1618,8 +1628,8 @@ export default function MijnPlanningPage() {
     );
   }
 
-  // ===== Alle Werkbonnen pagina =====
-  if (page === "werkbonnen") {
+  // ===== Werkbon-historie (context: adres/eerdere bonnen, vanuit planning) =====
+  if (page === "werkbonHistorie") {
     const title =
       alleBonnenContext?.type === "historie_op_adres"
         ? "Historie op dit adres"
@@ -1841,66 +1851,48 @@ export default function MijnPlanningPage() {
     );
   }
 
-  // ===== Portaal pagina =====
-  if (page === "portaal") {
+  // ===== Werkbonnen zoeken (tab) =====
+  if (page === "werkbonnen") {
     return (
-      <div style={{ padding: 16, paddingBottom: 96, background: THEME.bg, minHeight: "100vh" }}>
+      <div style={{ padding: 0, paddingBottom: 0, background: "var(--app-bg, #0a1628)", minHeight: "100vh" }}>
+        {/* Header */}
         <div
           style={{
-            padding: 12,
-            border: `1px solid ${THEME.border}`,
-            borderRadius: 14,
-            background: 'var(--app-panel)',
-            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-            marginBottom: 16,
             display: "flex",
-            alignItems: "center",
             gap: 10,
+            alignItems: "center",
+            padding: "12px 16px",
+            borderBottom: "1px solid var(--app-border, rgba(151,170,196,0.14))",
+            background: "var(--app-panel, rgba(13,28,53,0.95))",
           }}
         >
           <img
             src={logoUrl || '/logo/logo.png'}
             alt={naam || 'Logo'}
-            style={{ height: 40, width: "auto", maxWidth: 160, objectFit: "contain", objectPosition: "left center", opacity: 0.9, flexShrink: 0 }}
+            style={{ height: 32, width: "auto", maxWidth: 120, objectFit: "contain", objectPosition: "left center", opacity: 0.9, flexShrink: 0 }}
             onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
           />
-          <div>
-            <div style={{ fontWeight: "normal", color: THEME.brand }}>Medewerkersportaal</div>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>Ingelogd als: {user?.email ?? ""}</div>
+          <div style={{ fontSize: 15, fontWeight: "normal", color: "var(--app-accent, #2b89ff)" }}>
+            Werkbonnen zoeken
           </div>
         </div>
 
-        <div
-          style={{
-            padding: 20,
-            borderRadius: 14,
-            border: `1px solid ${THEME.border}`,
-            background: 'var(--app-panel)',
-            textAlign: "center",
-            color: "var(--app-muted, rgba(148,163,184,0.8))",
-            fontSize: 14,
-            lineHeight: 1.6,
-          }}
-        >
-          <div style={{ fontSize: 40, marginBottom: 12 }}>👤</div>
-          <div style={{ fontWeight: "normal", color: "var(--app-text)", marginBottom: 8 }}>Medewerkersportaal</div>
-          <div style={{ marginBottom: 16 }}>Hier komt het medewerkersportaal. Loonstroken, rooster en persoonlijke gegevens.</div>
-          <button
-            type="button"
-            onClick={() => { window.open('/app/medewerkersportaal', '_blank') }}
-            style={{
-              padding: "10px 20px",
-              borderRadius: 12,
-              border: `1px solid ${THEME.border}`,
-              background: 'var(--app-panel)',
-              color: "var(--app-text)",
-              fontWeight: "normal",
-              fontSize: 14,
-              cursor: "pointer",
-            }}
-          >
-            Open in browser →
-          </button>
+        {/* Scrollable content */}
+        <div style={{ overflowY: "auto", paddingBottom: 80 }}>
+          <WerkbonnenZoekView />
+        </div>
+
+        {renderBottomNav()}
+      </div>
+    );
+  }
+
+  // ===== Portaal pagina =====
+  if (page === "portaal") {
+    return (
+      <div style={{ background: THEME.bg, minHeight: "100vh" }}>
+        <div style={{ overflowY: "auto", paddingBottom: 80 }}>
+          <MedewerkersPortaalView />
         </div>
         {renderBottomNav()}
       </div>
@@ -1911,52 +1903,66 @@ export default function MijnPlanningPage() {
   if (page === "instellingen") {
     return (
       <div style={{ padding: 16, paddingBottom: 96, background: THEME.bg, minHeight: "100vh" }}>
-        <div
-          style={{
-            padding: 12,
-            border: `1px solid ${THEME.border}`,
-            borderRadius: 14,
-            background: 'var(--app-panel)',
-            boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-            marginBottom: 16,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
           <img
             src={logoUrl || '/logo/logo.png'}
             alt={naam || 'Logo'}
-            style={{ height: 40, width: "auto", maxWidth: 160, objectFit: "contain", objectPosition: "left center", opacity: 0.9, flexShrink: 0 }}
+            style={{ height: 32, width: "auto", maxWidth: 100, objectFit: "contain", opacity: 0.9, flexShrink: 0 }}
             onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
           />
-          <div>
-            <div style={{ fontWeight: "normal", color: THEME.brand }}>Instellingen</div>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>{user?.email ?? ""}</div>
-          </div>
+          <div style={{ fontSize: 16, fontWeight: "normal", color: THEME.brand }}>Instellingen</div>
         </div>
 
-        <div
-          style={{
-            borderRadius: 14,
-            border: `1px solid ${THEME.border}`,
-            background: 'var(--app-panel)',
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ padding: "16px 16px 4px", fontSize: 11, fontWeight: "normal", opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Account
-          </div>
-          <div style={{ padding: "12px 16px", borderTop: `1px solid ${THEME.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        {/* ── Weergave ── */}
+        <SettingsGroup label="Weergave">
+          <SettingsToggleRow
+            label="Donker thema"
+            sublabel="Schakel tussen donker en licht thema"
+            value={prefs.theme === 'dark'}
+            onChange={v => setPref('theme', v ? 'dark' : 'light')}
+          />
+          <SettingsToggleRow
+            label="Toon afgehandelde bons in planning"
+            sublabel="Afgehandelde / gefactureerde werkbonnen zichtbaar in dagoverzicht"
+            value={prefs.showAfgehandeldInPlanning}
+            onChange={v => setPref('showAfgehandeldInPlanning', v)}
+          />
+          <SettingsSelectRow
+            label="Standaard weergave"
+            sublabel="Welke weergave bij openen van de planning"
+            value={prefs.defaultView}
+            options={[
+              { value: 'vandaag', label: 'Vandaag' },
+              { value: 'werkweek', label: 'Werkweek' },
+              { value: 'heleweek', label: 'Hele week' },
+            ]}
+            onChange={v => setPref('defaultView', v)}
+          />
+        </SettingsGroup>
+
+        {/* ── Meldingen ── */}
+        <SettingsGroup label="Meldingen">
+          <SettingsToggleRow
+            label="Pushberichten"
+            sublabel="Ontvang meldingen over nieuwe werkbonnen en updates"
+            value={prefs.pushEnabled}
+            onChange={v => setPref('pushEnabled', v)}
+          />
+        </SettingsGroup>
+
+        {/* ── Account ── */}
+        <SettingsGroup label="Account">
+          <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <div style={{ fontWeight: "normal", fontSize: 14 }}>Ingelogd als</div>
+              <div style={{ fontSize: 14, color: THEME.text }}>Ingelogd als</div>
               <div style={{ fontSize: 12, opacity: 0.65, marginTop: 2 }}>{user?.email ?? "—"}</div>
             </div>
           </div>
           {medewerker && (
             <div style={{ padding: "12px 16px", borderTop: `1px solid ${THEME.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div style={{ fontWeight: "normal", fontSize: 14 }}>Naam</div>
+                <div style={{ fontSize: 14, color: THEME.text }}>Naam</div>
                 <div style={{ fontSize: 12, opacity: 0.65, marginTop: 2 }}>{medewerker.naam}</div>
               </div>
             </div>
@@ -1969,29 +1975,26 @@ export default function MijnPlanningPage() {
                 width: "100%",
                 padding: "12px 16px",
                 borderRadius: 12,
-                border: `1px solid rgba(239,68,68,0.4)`,
+                border: "1px solid rgba(239,68,68,0.4)",
                 background: "rgba(239,68,68,0.08)",
                 color: "#f87171",
                 fontWeight: "normal",
                 fontSize: 14,
                 cursor: "pointer",
                 textAlign: "center",
+                fontFamily: "inherit",
               }}
             >
               Uitloggen
             </button>
           </div>
+        </SettingsGroup>
+
+        {/* ── App-info ── */}
+        <div style={{ marginTop: 20, padding: "10px 14px", borderRadius: 10, textAlign: "center" }}>
+          <div style={{ fontSize: 12, opacity: 0.35 }}>Montiqu Buitendienst · v1.0.0</div>
         </div>
 
-        <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 14, border: `1px solid ${THEME.border}`, background: 'var(--app-panel)' }}>
-          <div style={{ fontSize: 11, fontWeight: "normal", opacity: 0.5, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12 }}>
-            App-informatie
-          </div>
-          <div style={{ fontSize: 13, opacity: 0.6, display: "flex", flexDirection: "column", gap: 6 }}>
-            <div>Montiqu Buitendienst</div>
-            <div>Versie 1.0.0</div>
-          </div>
-        </div>
         {renderBottomNav()}
       </div>
     );
@@ -2883,4 +2886,116 @@ export default function MijnPlanningPage() {
       {renderBottomNav()}
     </div>
   );
+}
+
+// ── Instellingen helper componenten ──────────────────────────────────────────
+
+function SettingsGroup({ label, children }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{
+        padding: "8px 4px",
+        fontSize: 11,
+        fontWeight: "normal",
+        opacity: 0.45,
+        textTransform: "uppercase",
+        letterSpacing: "0.07em",
+        color: "var(--app-text)",
+      }}>
+        {label}
+      </div>
+      <div style={{
+        borderRadius: 14,
+        border: "1px solid var(--app-border, rgba(151,170,196,0.14))",
+        background: "var(--app-panel, rgba(13,28,53,0.95))",
+        overflow: "hidden",
+      }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function SettingsToggleRow({ label, sublabel, value, onChange }) {
+  return (
+    <div style={{
+      padding: "14px 16px",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      borderBottom: "1px solid var(--app-border, rgba(151,170,196,0.08))",
+    }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, color: "var(--app-text)", fontWeight: "normal" }}>{label}</div>
+        {sublabel && <div style={{ fontSize: 11, opacity: 0.55, marginTop: 2 }}>{sublabel}</div>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        onClick={() => onChange(!value)}
+        style={{
+          position: "relative",
+          width: 44,
+          height: 26,
+          borderRadius: 13,
+          border: "none",
+          background: value ? "#2b89ff" : "rgba(100,116,139,0.3)",
+          cursor: "pointer",
+          transition: "background 200ms ease",
+          flexShrink: 0,
+          padding: 0,
+        }}
+      >
+        <span style={{
+          position: "absolute",
+          top: 3,
+          left: value ? 21 : 3,
+          width: 20,
+          height: 20,
+          borderRadius: "50%",
+          background: "white",
+          transition: "left 200ms ease",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+        }} />
+      </button>
+    </div>
+  )
+}
+
+function SettingsSelectRow({ label, sublabel, value, options, onChange }) {
+  return (
+    <div style={{
+      padding: "14px 16px",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      borderBottom: "1px solid var(--app-border, rgba(151,170,196,0.08))",
+    }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 14, color: "var(--app-text)", fontWeight: "normal" }}>{label}</div>
+        {sublabel && <div style={{ fontSize: 11, opacity: 0.55, marginTop: 2 }}>{sublabel}</div>}
+      </div>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid var(--app-border, rgba(151,170,196,0.2))",
+          background: "var(--app-bg, #0a1628)",
+          color: "var(--app-text, rgba(226,232,240,0.95))",
+          fontSize: 13,
+          cursor: "pointer",
+          flexShrink: 0,
+        }}
+      >
+        {options.map(o => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  )
 }

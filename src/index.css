@@ -74,6 +74,52 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Licht thema ─────────────────────────────────────────────────────────── */
+[data-theme="light"] {
+  color-scheme: light;
+  --app-bg: #f0f4f8;
+  --app-bg2: #e8eef5;
+  --app-bg3: #dce6f0;
+  --app-panel: rgba(255, 255, 255, 0.92);
+  --app-panel2: rgba(248, 250, 252, 0.88);
+  --app-panel-strong: rgba(255, 255, 255, 0.98);
+  --app-border: rgba(30, 60, 100, 0.12);
+  --app-border-strong: rgba(30, 60, 100, 0.22);
+  --app-text: rgba(15, 23, 42, 0.95);
+  --app-text-strong: #0f172a;
+  --app-muted: rgba(71, 85, 105, 0.8);
+  --app-muted2: rgba(100, 116, 139, 0.6);
+  --app-accent: #1d6fe8;
+  --app-accent-strong: #1558c7;
+  --app-accent-soft: rgba(29, 111, 232, 0.15);
+  --app-accent-softer: rgba(29, 111, 232, 0.08);
+  --app-success: #16a34a;
+  --app-success-soft: rgba(22, 163, 74, 0.14);
+  --app-warning: #d97706;
+  --app-warning-soft: rgba(217, 119, 6, 0.14);
+  --app-danger: #dc2626;
+  --app-danger-soft: rgba(220, 38, 38, 0.12);
+  --app-neutral-soft: rgba(100, 116, 139, 0.12);
+}
+
+[data-theme="light"] body {
+  background: linear-gradient(180deg, var(--app-bg3) 0%, var(--app-bg2) 28%, var(--app-bg) 100%);
+}
+
+[data-theme="light"] .app-bottom-nav {
+  background: rgba(255, 255, 255, 0.96);
+  border-top: 1px solid rgba(30, 60, 100, 0.12);
+  box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .app-bottom-nav__item {
+  color: rgba(71, 85, 105, 0.7);
+}
+
+[data-theme="light"] .app-bottom-nav__item--active {
+  color: #1d6fe8;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
