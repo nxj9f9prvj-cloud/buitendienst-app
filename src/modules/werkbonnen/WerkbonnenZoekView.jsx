@@ -71,10 +71,10 @@ export default function WerkbonnenZoekView() {
     setError('')
     try {
       const select = [
-        'id', 'werkbonnummer', 'status', 'plan_datum', 'created_at',
+        'id', 'werkbonnummer', 'status', 'plandatum', 'created_at',
         'werk_straat', 'werk_huisnummer', 'werk_toevoeging', 'werk_postcode', 'werk_plaats',
-        'omschrijving',
-        'klant:klant_id(id, naam)',
+        'werkomschrijving',
+        'klant:klanten(id, naam)',
       ].join(', ')
 
       let qb = supabase
@@ -321,7 +321,7 @@ export default function WerkbonnenZoekView() {
 
               {/* Datum */}
               <div style={{ fontSize: 11, color: THEME.muted, marginTop: 4 }}>
-                {bon.plan_datum ? `Gepland: ${formatDate(bon.plan_datum)}` : `Aangemeld: ${formatDate(bon.created_at)}`}
+                {bon.plandatum ? `Gepland: ${formatDate(bon.plandatum)}` : `Aangemeld: ${formatDate(bon.created_at)}`}
               </div>
 
               {/* Uitklapdetail (read-only) */}
@@ -342,13 +342,13 @@ export default function WerkbonnenZoekView() {
                     <InfoBlock label="Werkbonnummer" value={bon.werkbonnummer} />
                     <InfoBlock label="Status" value={statusLabel(bon.status)} />
                     <InfoBlock label="Klantnaam" value={bon.klant?.naam} />
-                    <InfoBlock label="Plan datum" value={formatDate(bon.plan_datum)} />
+                    <InfoBlock label="Plan datum" value={formatDate(bon.plandatum)} />
                   </div>
                   {(adres || plaatsPc) && (
                     <InfoBlock label="Werkadres" value={[adres, plaatsPc].filter(Boolean).join(', ')} />
                   )}
-                  {bon.omschrijving && (
-                    <InfoBlock label="Omschrijving" value={bon.omschrijving} />
+                  {bon.werkomschrijving && (
+                    <InfoBlock label="Omschrijving" value={bon.werkomschrijving} />
                   )}
                   <div style={{
                     marginTop: 4, padding: '6px 10px', borderRadius: 8,
