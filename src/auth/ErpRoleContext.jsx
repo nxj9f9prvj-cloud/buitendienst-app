@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { withTimeout } from '../lib/withTimeout'
 import { useAuth } from './useAuth'
 
-/** @typedef {'admin' | 'binnendienst' | 'buitendienst'} ErpRol */
+/** @typedef {'admin' | 'binnendienst' | 'buitendienst' | 'uitvoerder'} ErpRol */
 
 const DEFAULT_ROL = 'buitendienst'
 
@@ -69,6 +69,7 @@ export function ErpRoleProvider({ children }) {
     const isAdmin = rol === 'admin'
     const isBinnendienst = rol === 'binnendienst'
     const isBuitendienst = rol === 'buitendienst'
+    const isUitvoerder = rol === 'uitvoerder'
     return {
       rol,
       medewerkerId,
@@ -79,6 +80,7 @@ export function ErpRoleProvider({ children }) {
       isAdmin,
       isBinnendienst,
       isBuitendienst,
+      isUitvoerder,
       canAccessMedewerkersbeheer: isAdmin || isBinnendienst,
       canAccessBedrijfsgegevens: isAdmin,
       refetch: fetchRole,
@@ -98,5 +100,6 @@ export function useErpRole() {
 
 /** @param {string | null | undefined} rol */
 export function getDefaultAppPathForRol(rol) {
-  return String(rol ?? '').toLowerCase() === 'buitendienst' ? '/app/buitendienst' : '/app'
+  const r = String(rol ?? '').toLowerCase()
+  return (r === 'buitendienst' || r === 'uitvoerder') ? '/app/buitendienst' : '/app'
 }

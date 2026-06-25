@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Montiqu Buitendienst</string>
+    <string name="title_activity_main">Montiqu Buitendienst</string>
+    <string name="package_name">nl.montiqu.buitendienst</string>
+    <string name="custom_url_scheme">nl.montiqu.buitendienst</string>
+</resources>

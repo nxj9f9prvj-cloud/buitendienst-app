@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "810891992694",
+    "project_id": "montiqu-buitendienst",
+    "storage_bucket": "montiqu-buitendienst.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:810891992694:android:a03d4a25edb22644c0c957",
+        "android_client_info": {
+          "package_name": "nl.montiqu.buitendienst"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBY1TVbWfkJH73JBm3KyfN6liwj2jLxwQI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

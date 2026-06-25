@@ -58,7 +58,24 @@ function groupLoonstrokenByYear(docs) {
     .map((year) => ({ year, items: byYear[year] }))
 }
 
-function DocumentCard({ doc, downloadingDocumentId, onDownload, showCategorie = true }) {
+function DocumentCard({ doc, mailingDocumentId, onMail, showCategorie = true }) {
+  const [showEmailInput, setShowEmailInput] = React.useState(false)
+  const [emailValue, setEmailValue] = React.useState('')
+  const busy = mailingDocumentId === doc.id
+
+  function handleMailClick() {
+    if (busy) return
+    setShowEmailInput(true)
+  }
+
+  function handleSend() {
+    const trimmed = emailValue.trim()
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return
+    onMail(doc.id, trimmed)
+    setShowEmailInput(false)
+    setEmailValue('')
+  }
+
   return (
     <div
       style={{
@@ -73,22 +90,72 @@ function DocumentCard({ doc, downloadingDocumentId, onDownload, showCategorie = 
         {showCategorie ? `${CATEGORIE_LABELS[doc.categorie] || doc.categorie} • ` : ''}
         {new Date(doc.created_at).toLocaleDateString('nl-NL')}
       </div>
-      <button
-        type="button"
-        onClick={() => onDownload(doc.id)}
-        disabled={downloadingDocumentId === doc.id}
-        style={{
-          marginTop: 8,
-          padding: '8px 12px',
-          borderRadius: 8,
-          border: '1px solid var(--app-border)',
-          background: 'var(--app-bg)',
-          color: 'var(--app-text)',
-          cursor: downloadingDocumentId === doc.id ? 'not-allowed' : 'pointer',
-        }}
-      >
-        {downloadingDocumentId === doc.id ? 'Bezig…' : 'Download'}
-      </button>
+
+      {!showEmailInput ? (
+        <button
+          type="button"
+          onClick={handleMailClick}
+          disabled={busy}
+          style={{
+            marginTop: 8,
+            padding: '8px 14px',
+            borderRadius: 8,
+            border: '1px solid var(--app-accent)',
+            background: 'var(--app-accent-softer)',
+            color: 'var(--app-accent)',
+            fontSize: 14,
+            cursor: busy ? 'not-allowed' : 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          <span>✉️</span>
+          {busy ? 'Versturen…' : 'Mailen naar mij'}
+        </button>
+      ) : (
+        <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Naar welk e-mailadres?</div>
+          <input
+            type="email"
+            value={emailValue}
+            onChange={e => setEmailValue(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSend()}
+            placeholder="jouw@email.nl"
+            autoFocus
+            style={{
+              padding: '8px 10px', borderRadius: 8,
+              border: '1px solid var(--app-border)',
+              background: 'var(--app-bg)', color: 'var(--app-text)',
+              fontSize: 16, width: '100%', boxSizing: 'border-box',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={!emailValue.trim()}
+              style={{
+                flex: 1, padding: '8px 0', borderRadius: 8,
+                border: 'none', background: 'var(--app-accent)',
+                color: '#fff', fontSize: 14, cursor: 'pointer',
+              }}
+            >
+              Versturen
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowEmailInput(false); setEmailValue('') }}
+              style={{
+                padding: '8px 12px', borderRadius: 8,
+                border: '1px solid var(--app-border)',
+                background: 'transparent', color: 'var(--app-muted)',
+                fontSize: 14, cursor: 'pointer',
+              }}
+            >
+              Annuleer
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -133,7 +200,8 @@ export default function MedewerkersPortaalView() {
   const [documents, setDocuments] = useState([])
   const [documentsLoading, setDocumentsLoading] = useState(false)
   const [documentsError, setDocumentsError] = useState('')
-  const [downloadingDocumentId, setDownloadingDocumentId] = useState(null)
+  const [mailingDocumentId, setMailingDocumentId] = useState(null)
+  const [mailSuccessMsg, setMailSuccessMsg] = useState('')
   const [registeredPhone, setRegisteredPhone] = useState('')
   const [expandedOlderLoonstrookYears, setExpandedOlderLoonstrookYears] = useState(() => new Set())
 
@@ -469,30 +537,32 @@ export default function MedewerkersPortaalView() {
     }
   }, [getAuthHeaders, stepUpToken, user?.id])
 
-  const downloadDocument = useCallback(
-    async (documentId) => {
+  const mailDocument = useCallback(
+    async (documentId, emailTo) => {
       if (!stepUpToken) {
         setDocumentsError('Step-up verificatie vereist.')
         return
       }
-      setDownloadingDocumentId(documentId)
+      setMailingDocumentId(documentId)
       setDocumentsError('')
+      setMailSuccessMsg('')
       try {
         const headers = await getAuthHeaders()
-        const res = await fetch(`${getSupabaseUrl().replace(/\/$/, '')}/functions/v1/get-medewerker-document-download-url`, {
+        const res = await fetch(`${getSupabaseUrl().replace(/\/$/, '')}/functions/v1/send-document-link`, {
           method: 'POST',
           headers,
-          body: JSON.stringify({ document_id: documentId, stepup_token: stepUpToken }),
+          body: JSON.stringify({ document_id: documentId, stepup_token: stepUpToken, email_to: emailTo }),
         })
         const data = await res.json().catch(() => ({}))
-        if (!res.ok || !data?.signed_url) {
-          throw new Error(data?.error || data?.message || 'Downloadlink ophalen mislukt.')
+        if (!res.ok) {
+          throw new Error(data?.error || data?.message || 'Versturen mislukt.')
         }
-        window.open(data.signed_url, '_blank', 'noopener,noreferrer')
+        setMailSuccessMsg(`Link verstuurd naar ${emailTo}`)
+        setTimeout(() => setMailSuccessMsg(''), 5000)
       } catch (e) {
-        setDocumentsError(e?.message || 'Downloadlink ophalen mislukt.')
+        setDocumentsError(e?.message || 'E-mail versturen mislukt.')
       } finally {
-        setDownloadingDocumentId(null)
+        setMailingDocumentId(null)
       }
     },
     [getAuthHeaders, stepUpToken]
@@ -759,6 +829,16 @@ export default function MedewerkersPortaalView() {
               <p style={{ fontSize: 13, opacity: 0.75, marginTop: 0, marginBottom: 12 }}>
                 Certificaten, contract en overige documenten. Loonstroken staan apart.
               </p>
+              {mailSuccessMsg ? (
+                <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#22c55e', fontSize: 13 }}>
+                  ✓ {mailSuccessMsg}
+                </div>
+              ) : null}
+              {documentsError ? (
+                <div style={{ marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#f87171', fontSize: 13 }}>
+                  {documentsError}
+                </div>
+              ) : null}
               {documentsLoading ? (
                 <div style={{ opacity: 0.75 }}>Laden…</div>
               ) : overigeDocumenten.length === 0 ? (
@@ -769,8 +849,8 @@ export default function MedewerkersPortaalView() {
                     <DocumentCard
                       key={d.id}
                       doc={d}
-                      downloadingDocumentId={downloadingDocumentId}
-                      onDownload={downloadDocument}
+                      mailingDocumentId={mailingDocumentId}
+                      onMail={mailDocument}
                     />
                   ))}
                 </div>
@@ -829,8 +909,8 @@ export default function MedewerkersPortaalView() {
                               <DocumentCard
                                 key={d.id}
                                 doc={d}
-                                downloadingDocumentId={downloadingDocumentId}
-                                onDownload={downloadDocument}
+                                mailingDocumentId={mailingDocumentId}
+                                onMail={mailDocument}
                                 showCategorie={false}
                               />
                             ))}

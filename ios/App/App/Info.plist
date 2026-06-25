@@ -2,12 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CAPACITOR_DEBUG</key>
+	<key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Montiqu Buitendienst</string>
+	<string>Montiqu Buitendienst</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,6 +24,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -47,5 +51,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Montiqu gebruikt de camera om foto's toe te voegen aan werkbonnen.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Montiqu heeft toegang tot je fotobibliotheek nodig om foto's te selecteren voor werkbonnen.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Montiqu kan foto's opslaan in je fotobibliotheek.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Montiqu gebruikt de microfoon bij het opnemen van video voor werkbonnen.</string>
 </dict>
 </plist>

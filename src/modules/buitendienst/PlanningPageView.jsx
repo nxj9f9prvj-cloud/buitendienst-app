@@ -3,6 +3,7 @@
  * Gebruikt useWerkbonnen.replaceWerkbonMaterieel en useArtikelen –zelfde route als ERP.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../../auth/useAuth'
 import { supabase } from '../../lib/supabaseClient'
 import { useWerkbonnen } from '../../hooks/useWerkbonnen'
@@ -385,7 +386,7 @@ const BUCKET = "werkbon-fotos";
 
 export default function MijnPlanningPage() {
   const { user, logout } = useAuth();
-  const { organisatieId } = useErpRole();
+  const { organisatieId, isUitvoerder, medewerkerId: huidigMedewerkerId } = useErpRole();
   const { logoUrl, naam } = useOrganisatie();
   const { prefs, setPref } = useAppPrefs();
 
@@ -411,7 +412,9 @@ export default function MijnPlanningPage() {
   const [medewerkerErr, setMedewerkerErr] = useState("");
 
   // views
-  const [view, setView] = useState("werkweek"); // vandaag | werkweek | heleweek
+  const [view, setView] = useState(() => prefs.defaultView || "werkweek"); // vandaag | werkweek | heleweek
+  // uitvoerder: eigen planning vs totale planning
+  const [planningModus, setPlanningModus] = useState("eigen"); // 'eigen' | 'totaal'
   const [weekOffset, setWeekOffset] = useState(0);
   const [dayOffset, setDayOffset] = useState(0);
 
@@ -565,22 +568,26 @@ export default function MijnPlanningPage() {
 
     setBonnenLoading(true);
     setBonnenError("");
-    const selectWithPrijsafspraak = "id, werkbonnummer, plandatum, planblok, plan_volgorde, werkomschrijving, interne_referentie, interne_referentie_buitendienst, status, label, created_at, onderweg_start, werkzaamheden_start, werk_straat, werk_huisnummer, werk_toevoeging, werk_postcode, werk_plaats, gekopieerd_van_werkbon_id, klant:klanten(id, naam, prijsafspraak_config), werkbon_categorieen ( id, naam )"
-    const selectFallback = "id, werkbonnummer, plandatum, planblok, plan_volgorde, werkomschrijving, interne_referentie, interne_referentie_buitendienst, status, label, created_at, onderweg_start, werkzaamheden_start, werk_straat, werk_huisnummer, werk_toevoeging, werk_postcode, werk_plaats, gekopieerd_van_werkbon_id, klant:klanten(id, naam), werkbon_categorieen ( id, naam )"
+    const selectWithPrijsafspraak = "id, werkbonnummer, plandatum, planblok, plan_volgorde, werkomschrijving, interne_referentie, interne_referentie_buitendienst, status, label, created_at, onderweg_start, werkzaamheden_start, werk_straat, werk_huisnummer, werk_toevoeging, werk_postcode, werk_plaats, medewerker_id, gekopieerd_van_werkbon_id, medewerker:medewerkers(naam), klant:klanten(id, naam, prijsafspraak_config), werkbon_categorieen ( id, naam )"
+    const selectFallback = "id, werkbonnummer, plandatum, planblok, plan_volgorde, werkomschrijving, interne_referentie, interne_referentie_buitendienst, status, label, created_at, onderweg_start, werkzaamheden_start, werk_straat, werk_huisnummer, werk_toevoeging, werk_postcode, werk_plaats, medewerker_id, gekopieerd_van_werkbon_id, medewerker:medewerkers(naam), klant:klanten(id, naam), werkbon_categorieen ( id, naam )"
 
-    const runListQuery = (selectClause) =>
-      supabase
+    const isTotaal = isUitvoerder && planningModus === "totaal";
+
+    const runListQuery = (selectClause) => {
+      let q = supabase
         .from("werkbonnen")
         .select(selectClause)
         .in("status", ["gepland", "ingepland", "klaar", "afgehandeld"])
         .is("archived_at", null)
-        .eq("medewerker_id", medewerker.id)
         .gte("plandatum", rangeStart)
         .lte("plandatum", rangeEnd)
         .order("plandatum", { ascending: true })
         .order("plan_volgorde", { ascending: true, nullsFirst: false })
         .order("planblok", { ascending: true, nullsFirst: true })
         .order("created_at", { ascending: true });
+      if (!isTotaal) q = q.eq("medewerker_id", medewerker.id);
+      return q;
+    };
 
     let { data, error } = await runListQuery(selectWithPrijsafspraak)
     if (error && isMissingPrijsafspraakConfigColumn(error)) {
@@ -603,7 +610,7 @@ export default function MijnPlanningPage() {
   useEffect(() => {
     fetchBonnen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [medewerker, rangeStart, rangeEnd]);
+  }, [medewerker, rangeStart, rangeEnd, planningModus]);
 
   // groeperen per dag
   const grouped = useMemo(() => {
@@ -1236,6 +1243,26 @@ export default function MijnPlanningPage() {
     }
   }
 
+  async function handleVerplaatsNaarMij() {
+    if (!selectedBon?.id || !medewerker) return
+    setModalBusy(true)
+    setModalError("")
+    try {
+      const { error } = await supabase
+        .from("werkbonnen")
+        .update({ medewerker_id: medewerker.id })
+        .eq("id", selectedBon.id)
+      if (error) throw error
+      setSelectedBonId(null)
+      setPlanningModus("eigen")
+      await fetchBonnen()
+    } catch (err) {
+      setModalError(err?.message ?? "Verplaatsen mislukt")
+    } finally {
+      setModalBusy(false)
+    }
+  }
+
   async function handleOnderwegNaarKlant() {
     if (!selectedBon?.id) return
     setModalBusy(true)
@@ -1679,7 +1706,8 @@ export default function MijnPlanningPage() {
         : "Alle Werkbonnen";
 
     return (
-      <div style={{ padding: 16, paddingBottom: 96, background: THEME.bg, minHeight: "100vh" }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: THEME.bg }}>
+        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: 16 }}>
         {/* Zelfde header als planning-scherm */}
         <div
           style={{
@@ -1887,6 +1915,7 @@ export default function MijnPlanningPage() {
             </div>
           </div>
         ) : null}
+        </div>
         {renderBottomNav()}
       </div>
     );
@@ -1895,32 +1924,10 @@ export default function MijnPlanningPage() {
   // ===== Werkbonnen zoeken (tab) =====
   if (page === "werkbonnen") {
     return (
-      <div style={{ padding: 0, paddingBottom: 0, background: "var(--app-bg, #0a1628)", minHeight: "100vh" }}>
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            padding: "12px 16px",
-            borderBottom: "1px solid var(--app-border, rgba(151,170,196,0.14))",
-            background: "var(--app-panel, rgba(13,28,53,0.95))",
-          }}
-        >
-          <img
-            src={logoUrl || '/logo/logo.png'}
-            alt={naam || 'Logo'}
-            style={{ height: 32, width: "auto", maxWidth: 120, objectFit: "contain", objectPosition: "left center", opacity: 0.9, flexShrink: 0 }}
-            onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
-          />
-          <div style={{ fontSize: 15, fontWeight: "normal", color: "var(--app-accent, #2b89ff)" }}>
-            Werkbonnen zoeken
-          </div>
-        </div>
-
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "var(--app-bg, #0a1628)" }}>
         {/* Scrollable content */}
-        <div style={{ overflowY: "auto", paddingBottom: 80 }}>
-          <WerkbonnenZoekView />
+        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+          <WerkbonnenZoekView logoUrl={logoUrl} naam={naam} />
         </div>
 
         {renderBottomNav()}
@@ -1931,8 +1938,8 @@ export default function MijnPlanningPage() {
   // ===== Portaal pagina =====
   if (page === "portaal") {
     return (
-      <div style={{ background: THEME.bg, minHeight: "100vh" }}>
-        <div style={{ overflowY: "auto", paddingBottom: 80 }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: THEME.bg }}>
+        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
           <MedewerkersPortaalView />
         </div>
         {renderBottomNav()}
@@ -1943,7 +1950,8 @@ export default function MijnPlanningPage() {
   // ===== Instellingen pagina =====
   if (page === "instellingen") {
     return (
-      <div style={{ padding: 16, paddingBottom: 96, background: THEME.bg, minHeight: "100vh" }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: THEME.bg }}>
+        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: 16 }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
           <img
@@ -1964,7 +1972,7 @@ export default function MijnPlanningPage() {
             onChange={v => setPref('theme', v ? 'dark' : 'light')}
           />
           <SettingsToggleRow
-            label="Toon afgehandelde bons in planning"
+            label="Toon afgehandelde bonnen in planning"
             sublabel="Afgehandelde / gefactureerde werkbonnen zichtbaar in dagoverzicht"
             value={prefs.showAfgehandeldInPlanning}
             onChange={v => setPref('showAfgehandeldInPlanning', v)}
@@ -1978,7 +1986,7 @@ export default function MijnPlanningPage() {
               { value: 'werkweek', label: 'Werkweek' },
               { value: 'heleweek', label: 'Hele week' },
             ]}
-            onChange={v => setPref('defaultView', v)}
+            onChange={v => { setPref('defaultView', v); setView(v); }}
           />
         </SettingsGroup>
 
@@ -2036,6 +2044,7 @@ export default function MijnPlanningPage() {
           <div style={{ fontSize: 12, opacity: 0.35 }}>Montiqu Buitendienst · v1.0.0</div>
         </div>
 
+        </div>
         {renderBottomNav()}
       </div>
     );
@@ -2044,146 +2053,174 @@ export default function MijnPlanningPage() {
   // ===== planning scherm =====
   return (
     <div
-      style={{ padding: "0 0 96px", background: THEME.bg, minHeight: "100vh" }}
+      style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: THEME.bg }}
       data-page="buitendienst-planning"
     >
-      {/* Header card */}
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          flexWrap: "wrap",
-          padding: 12,
-          border: `1px solid ${THEME.border}`,
-          borderRadius: 14,
-          background: 'var(--app-panel)',
-          boxShadow: "0 1px 2px rgba(0,0,0,0.06)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <img
-            src={logoUrl || '/logo/logo.png'}
-            alt={naam || 'Logo'}
-            style={{
-              height: 40,
-              width: "auto",
-              maxWidth: 260,
-              objectFit: "contain",
-              objectPosition: "left center",
-              opacity: 0.9,
-              marginRight: 12,
-              flexShrink: 0,
-            }}
-            onError={(e) => {
-              e.target.onerror = null
-              e.target.style.display = "none"
-            }}
-          />
-          <div>
-            <div style={{ fontWeight: "normal", color: THEME.brand }}>Buitendienst</div>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Ingelogd als: {user.email} ({medewerker?.naam || "—"})
-            </div>
+      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "12px 16px 16px" }}>
+
+      {/* ── Compacte header ─────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 14px",
+        borderRadius: 14,
+        background: "var(--app-panel)",
+        border: `1px solid ${THEME.border}`,
+        boxShadow: "0 1px 6px rgba(0,0,0,0.08)",
+        marginBottom: 18,
+      }}>
+        <img
+          src={logoUrl || '/logo/logo.png'}
+          alt={naam || 'Logo'}
+          style={{ height: 36, width: "auto", maxWidth: 120, objectFit: "contain", objectPosition: "left center", flexShrink: 0 }}
+          onError={(e) => { e.target.onerror = null; e.target.style.display = "none"; }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: THEME.brand }}>Buitendienst</div>
+          <div style={{ fontSize: 11, opacity: 0.65, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {user.email} &middot; {medewerker?.naam || "—"}
           </div>
         </div>
       </div>
 
-      {medewerkerErr ? <div style={{ color: "red", marginTop: 8 }}>{medewerkerErr}</div> : null}
+      {medewerkerErr ? <div style={{ color: "red", marginBottom: 10, fontSize: 13 }}>{medewerkerErr}</div> : null}
       {!medewerker && !medewerkerErr ? (
-        <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: `1px solid ${THEME.border}`, background: "var(--app-panel)", color: "var(--app-text)" }}>
-          Geen medewerker gekoppeld aan dit account. Werkbonnen worden alleen getoond als je e-mail in het ERP gekoppeld is aan een medewerker (medewerkers.user_id).
+        <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, border: `1px solid ${THEME.border}`, background: "var(--app-panel)", fontSize: 13, color: "var(--app-text)" }}>
+          Geen medewerker gekoppeld aan dit account.
         </div>
       ) : null}
 
-      {/* Paginatitel – geen placeholder; echte planning-UI */}
+      {/* ── Paginatitel + Eigen/Totaal toggle (uitvoerder only) ─────────── */}
       {medewerker ? (
-        <h1 style={{ marginTop: 16, marginBottom: 0, fontSize: "1.5rem", fontWeight: 400, color: "var(--app-text)" }}>
-          Mijn planning
-        </h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <h1 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "var(--app-text)" }}>
+            {isUitvoerder && planningModus === "totaal" ? "Totale planning" : "Mijn planning"}
+          </h1>
+          {isUitvoerder ? (
+            <div style={{
+              display: "flex",
+              background: "var(--app-panel)",
+              border: `1px solid ${THEME.border}`,
+              borderRadius: 10,
+              padding: 2,
+              gap: 2,
+            }}>
+              {[
+                { key: "eigen", label: "👤 Eigen" },
+                { key: "totaal", label: "👥 Totaal" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setPlanningModus(key)}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 8,
+                    border: "none",
+                    fontSize: 12,
+                    fontWeight: planningModus === key ? 600 : 400,
+                    cursor: "pointer",
+                    background: planningModus === key ? THEME.brand : "transparent",
+                    color: planningModus === key ? "#fff" : "var(--app-text)",
+                    fontFamily: "inherit",
+                    transition: "background 150ms",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
-      {/* View knoppen */}
-      <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button
-          onClick={() => {
-            setView("vandaag");
-            setDayOffset(0);
-          }}
-          style={{
-            fontWeight: "normal",
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: `1px solid ${THEME.border}`,
-            background: 'var(--app-panel)',
-          }}
-        >
-          Vandaag
-        </button>
-
-        <button
-          onClick={() => setView("werkweek")}
-          style={{
-            fontWeight: "normal",
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: `1px solid ${THEME.border}`,
-            background: 'var(--app-panel)',
-          }}
-        >
-          Werkweek
-        </button>
-
-        <button
-          onClick={() => setView("heleweek")}
-          style={{
-            fontWeight: "normal",
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: `1px solid ${THEME.border}`,
-            background: 'var(--app-panel)',
-          }}
-        >
-          Hele week
-        </button>
+      {/* ── Segmented view-selector ──────────────────────────────────────── */}
+      <div style={{
+        display: "flex",
+        background: "var(--app-panel)",
+        border: `1px solid ${THEME.border}`,
+        borderRadius: 12,
+        padding: 3,
+        gap: 2,
+        marginBottom: 12,
+      }}>
+        {[
+          { key: "vandaag", label: "Vandaag", onClick: () => { setView("vandaag"); setDayOffset(0); } },
+          { key: "werkweek", label: "Werkweek", onClick: () => setView("werkweek") },
+          { key: "heleweek", label: "Hele week", onClick: () => setView("heleweek") },
+        ].map(({ key, label, onClick }) => (
+          <button
+            key={key}
+            onClick={onClick}
+            style={{
+              flex: 1,
+              padding: "8px 4px",
+              borderRadius: 9,
+              border: "none",
+              fontSize: 13,
+              fontWeight: view === key ? 600 : 400,
+              cursor: "pointer",
+              transition: "background 150ms, color 150ms",
+              background: view === key ? THEME.brand : "transparent",
+              color: view === key ? "#fff" : "var(--app-text)",
+              fontFamily: "inherit",
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* Navigatie */}
-      {view === "vandaag" ? (
-        <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            onClick={() => setDayOffset((x) => x - 1)}
-            style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${THEME.border}`, background: 'var(--app-panel)' }}
-          >
-            ← gisteren
-          </button>
-          <div>Datum: {formatDateNL(rangeStart)}</div>
-          <button
-            onClick={() => setDayOffset((x) => x + 1)}
-            style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${THEME.border}`, background: 'var(--app-panel)' }}
-          >
-            morgen →
-          </button>
+      {/* ── Navigatiebalk ────────────────────────────────────────────────── */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        marginBottom: 16,
+        background: "var(--app-panel)",
+        border: `1px solid ${THEME.border}`,
+        borderRadius: 12,
+        padding: "6px 8px",
+      }}>
+        <button
+          onClick={() => view === "vandaag" ? setDayOffset((x) => x - 1) : setWeekOffset((w) => w - 1)}
+          style={{
+            flexShrink: 0,
+            width: 36, height: 36,
+            borderRadius: 9,
+            border: `1px solid ${THEME.border}`,
+            background: "var(--app-panel2)",
+            color: "var(--app-text)",
+            fontSize: 16,
+            cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          aria-label="vorige"
+        >‹</button>
+
+        <div style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 500, color: "var(--app-text)", lineHeight: 1.3 }}>
+          {view === "vandaag"
+            ? formatDateNL(rangeStart)
+            : <>{formatDateNL(rangeStart)}<br /><span style={{ opacity: 0.55 }}>t/m</span> {formatDateNL(rangeEnd)}</>
+          }
         </div>
-      ) : (
-        <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <button
-            onClick={() => setWeekOffset((w) => w - 1)}
-            style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${THEME.border}`, background: 'var(--app-panel)' }}
-          >
-            ← vorige week
-          </button>
-          <div>
-            Range: {formatDateNL(rangeStart)} t/m {formatDateNL(rangeEnd)}
-          </div>
-          <button
-            onClick={() => setWeekOffset((w) => w + 1)}
-            style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${THEME.border}`, background: 'var(--app-panel)' }}
-          >
-            volgende week →
-          </button>
-        </div>
-      )}
+
+        <button
+          onClick={() => view === "vandaag" ? setDayOffset((x) => x + 1) : setWeekOffset((w) => w + 1)}
+          style={{
+            flexShrink: 0,
+            width: 36, height: 36,
+            borderRadius: 9,
+            border: `1px solid ${THEME.border}`,
+            background: "var(--app-panel2)",
+            color: "var(--app-text)",
+            fontSize: 16,
+            cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          aria-label="volgende"
+        >›</button>
+      </div>
 
       {bonnenLoading ? <div style={{ marginTop: 12 }}>Laden...</div> : null}
       {bonnenError ? <div style={{ marginTop: 12, color: "red" }}>{bonnenError}</div> : null}
@@ -2221,8 +2258,9 @@ export default function MijnPlanningPage() {
                 ].filter(Boolean);
                 const werkadres = werkadresParts.length ? werkadresParts.join(", ") : "—";
                 const isGeplandStatus = statusNorm === "gepland" || statusNorm === "ingepland";
-                const showOnderwegKnop = isGeplandStatus && !b?.onderweg_start;
-                const showBeginWerkKnop = isGeplandStatus && !!b?.onderweg_start && !b?.werkzaamheden_start;
+                const isEigenBon = b?.medewerker_id === medewerker?.id;
+                const showOnderwegKnop = isGeplandStatus && !b?.onderweg_start && isEigenBon;
+                const showBeginWerkKnop = isGeplandStatus && !!b?.onderweg_start && !b?.werkzaamheden_start && isEigenBon;
                 const onderwegBusy = onderwegBusyId === b?.id;
                 const beginWerkBusy = beginWerkBusyId === b?.id;
                 return (
@@ -2262,6 +2300,11 @@ export default function MijnPlanningPage() {
                         {b?.label ? <LabelBadge label={b.label} /> : null}
                         {categorieNaam ? (
                           <span style={{ fontSize: 11, opacity: 0.9, padding: "2px 6px", borderRadius: 6, background: "rgba(0,0,0,0.15)" }}>{categorieNaam}</span>
+                        ) : null}
+                        {isUitvoerder && planningModus === "totaal" ? (
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: isEigenBon ? THEME.brand : "rgba(255,255,255,0.15)", color: isEigenBon ? "#fff" : "var(--app-text)", fontWeight: 500 }}>
+                            {b?.medewerker?.naam ?? "Niet toegewezen"}
+                          </span>
                         ) : null}
                       </div>
                       <div style={{ fontWeight: "normal", fontSize: 14 }}>{werkadres}</div>
@@ -2324,8 +2367,8 @@ export default function MijnPlanningPage() {
         ))}
       </div>
 
-      {/* Mobiele fullscreen modal */}
-      {selectedBonId ? (
+      {/* Mobiele fullscreen modal — via portal buiten scroll-container (iOS position:fixed fix) */}
+      {selectedBonId ? createPortal(
         <div
           style={{
             position: "fixed",
@@ -2343,6 +2386,7 @@ export default function MijnPlanningPage() {
             style={{
               padding: 12,
               paddingLeft: 18,
+              paddingTop: "max(12px, env(safe-area-inset-top))",
               borderBottom: `1px solid ${THEME.border}`,
               display: "flex",
               justifyContent: "space-between",
@@ -2829,6 +2873,26 @@ export default function MijnPlanningPage() {
           {/* Optioneel: handtekening achter knop (alleen tonen ná "Einde werkzaamheden") */}
           {canEdit && selectedBon?.werkzaamheden_start && selectedBon?.werkzaamheden_eind ? (
             <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: `1px solid ${THEME.border}`, background: 'var(--app-panel)' }}>
+
+              {/* 2e man — ook bereikbaar ná Einde werkzaamheden, zonder omhoog scrollen */}
+              {magTweedeManArbeidsloonKiezen(selectedBon) ? (
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={!!form.arbeidsloon_tweede_man}
+                    onChange={(e) => setForm((f) => ({ ...f, arbeidsloon_tweede_man: e.target.checked }))}
+                    disabled={modalBusy || uploadBusy}
+                    style={{ marginTop: 3, width: 18, height: 18, accentColor: THEME.brand, flexShrink: 0 }}
+                  />
+                  <span>
+                    <span style={{ display: "block", fontSize: 14 }}>2e man toevoegen</span>
+                    <span style={{ display: "block", fontSize: 12, opacity: 0.7, marginTop: 2 }}>
+                      Verdubbelt het automatische arbeidsloon (urenregel ×2).
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+
               {!showHandtekeningVeld ? (
                 <button
                   type="button"
@@ -2906,7 +2970,30 @@ export default function MijnPlanningPage() {
           ) : null}
 
           {/* Footer (sticky) */}
-          <div style={{ borderTop: `1px solid ${THEME.border}`, padding: 12, display: "flex", gap: 8, flexWrap: "wrap", background: 'var(--app-panel)' }}>
+          <div style={{ borderTop: `1px solid ${THEME.border}`, padding: 12, paddingBottom: "calc(12px + env(safe-area-inset-bottom))", display: "flex", gap: 8, flexWrap: "wrap", background: 'var(--app-panel)' }}>
+            {/* Verplaats naar mij — uitvoerder in totaal-modus, voor een bon van iemand anders */}
+            {isUitvoerder && planningModus === "totaal" && selectedBon?.medewerker_id !== medewerker?.id ? (
+              <button
+                type="button"
+                onClick={handleVerplaatsNaarMij}
+                disabled={modalBusy}
+                style={{
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: `1px solid ${THEME.brand}`,
+                  background: THEME.brand,
+                  color: "white",
+                  fontWeight: 500,
+                  fontSize: 13,
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  marginBottom: 4,
+                }}
+              >
+                📋 Verplaats naar mijn planning
+              </button>
+            ) : null}
             {selectedBon?.werkzaamheden_start && !selectedBon?.werkzaamheden_eind ? (
               <button
                 type="button"
@@ -2953,8 +3040,9 @@ export default function MijnPlanningPage() {
             </button>
           </div>
         </div>
-      ) : null}
+      , document.body) : null}
 
+      </div>
       {renderBottomNav()}
     </div>
   );

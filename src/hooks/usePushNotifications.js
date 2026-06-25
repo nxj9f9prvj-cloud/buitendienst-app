@@ -32,30 +32,46 @@ export function usePushNotifications() {
 
     async function setup() {
       try {
+        console.log('[Push] setup() gestart, user:', user?.id, 'platform:', Capacitor.getPlatform())
+
         // Vraag toestemming
         let { receive } = await PushNotifications.checkPermissions()
+        console.log('[Push] checkPermissions:', receive)
+
         if (receive === 'prompt' || receive === 'prompt-with-rationale') {
           const result = await PushNotifications.requestPermissions()
           receive = result.receive
+          console.log('[Push] requestPermissions resultaat:', receive)
         }
-        if (receive !== 'granted') return
+        if (receive !== 'granted') {
+          console.warn('[Push] Toestemming NIET verleend:', receive)
+          return
+        }
         if (didUnmount) return
 
+        console.log('[Push] PushNotifications.register() aanroepen…')
         await PushNotifications.register()
+        console.log('[Push] register() klaar – wacht op token via listener')
 
         // Token ontvangen → opslaan in Supabase
         const regListener = await PushNotifications.addListener('registration', async (token) => {
+          console.log('[Push] Token ontvangen (raw):', token?.value?.slice(0, 24) + '…')
           if (!token?.value) return
-          await supabase.from('push_tokens').upsert(
+          // APNs verwacht een aaneengesloten lowercase hex-string zonder spaties
+          const cleanToken = token.value.replace(/\s+/g, '').toLowerCase()
+          console.log('[Push] Token (clean):', cleanToken.slice(0, 24) + '…')
+          const { error } = await supabase.from('push_tokens').upsert(
             {
               user_id: user.id,
               organisatie_id: organisatieId || null,
-              device_token: token.value,
+              device_token: cleanToken,
               platform: Capacitor.getPlatform(),
               updated_at: new Date().toISOString(),
             },
             { onConflict: 'user_id,device_token' },
           )
+          if (error) console.error('[Push] Token opslaan mislukt:', error)
+          else console.log('[Push] Token opgeslagen in Supabase ✓')
         })
 
         // Registratiefout
