@@ -192,11 +192,32 @@ function clearWerkbonFormDraft(werkbonId) {
   }
 }
 
+function hasDraftText(value) {
+  return String(value ?? "").trim().length > 0;
+}
+
+/** Bewaar form-waarde; val terug op bestaande DB-waarde i.p.v. leegmaken. */
+function pickTextForSave(formValue, existingValue) {
+  const trimmed = String(formValue ?? "").trim();
+  if (trimmed) return trimmed;
+  const existing = String(existingValue ?? "").trim();
+  return existing || null;
+}
+
+function mergeDraftTextField(dbValue, draftValue) {
+  return hasDraftText(draftValue) ? draftValue : (dbValue ?? "");
+}
+
 function mergeDbFormWithDraft(dbForm, draft) {
   if (!draft) return dbForm;
   return {
     ...dbForm,
-    ...draft,
+    bevindingen: mergeDraftTextField(dbForm.bevindingen, draft.bevindingen),
+    advies: mergeDraftTextField(dbForm.advies, draft.advies),
+    interne_referentie_buitendienst: mergeDraftTextField(dbForm.interne_referentie_buitendienst, draft.interne_referentie_buitendienst),
+    klus_gereed: draft.klus_gereed,
+    vervolg_nodig: draft.vervolg_nodig,
+    arbeidsloon_tweede_man: draft.arbeidsloon_tweede_man,
     materialen: draft.materialen.length > 0 ? draft.materialen : dbForm.materialen,
     fotos_urls: draft.fotos_urls.length > 0 ? draft.fotos_urls : dbForm.fotos_urls,
   };
@@ -386,7 +407,7 @@ const BUCKET = "werkbon-fotos";
 
 export default function MijnPlanningPage() {
   const { user, logout } = useAuth();
-  const { organisatieId, isUitvoerder, medewerkerId: huidigMedewerkerId } = useErpRole();
+  const { organisatieId, isUitvoerder: isUitvoerderCtx, medewerkerId: huidigMedewerkerId } = useErpRole();
   const { logoUrl, naam } = useOrganisatie();
   const { prefs, setPref } = useAppPrefs();
 
@@ -410,11 +431,52 @@ export default function MijnPlanningPage() {
   // medewerker
   const [medewerker, setMedewerker] = useState(null);
   const [medewerkerErr, setMedewerkerErr] = useState("");
+  // uitvoerder check: via context OF via medewerker.rol (fallback als context nog niet geladen)
+  const isUitvoerder = isUitvoerderCtx || String(medewerker?.rol ?? '').toLowerCase() === 'uitvoerder';
 
   // views
   const [view, setView] = useState(() => prefs.defaultView || "werkweek"); // vandaag | werkweek | heleweek
   // uitvoerder: eigen planning vs totale planning
   const [planningModus, setPlanningModus] = useState("eigen"); // 'eigen' | 'totaal'
+
+  // uitvoerder totaal-modus: alle medewerkers van de organisatie
+  const [alleMedewerkers, setAlleMedewerkers] = useState([]);
+  const [geselecteerdTabMedewerkerId, setGeselecteerdTabMedewerkerId] = useState(null);
+  const [verplaatsPickerOpen, setVerplaatsPickerOpen] = useState(false);
+
+  // Fetch alle buitendienst/uitvoerder medewerkers voor de organisatie (alleen in totaal-modus)
+  useEffect(() => {
+    if (!isUitvoerder || planningModus !== "totaal" || !organisatieId) return;
+    supabase
+      .from("medewerkers")
+      .select("id, naam, rol")
+      .eq("organisatie_id", organisatieId)
+      .eq("actief", true)
+      .eq("toon_in_planning", true)
+      .in("rol", ["buitendienst", "uitvoerder"])
+      .order("naam", { ascending: true })
+      .then(({ data }) => {
+        if (data?.length) {
+          setAlleMedewerkers(data);
+          // Standaard eerste tab, of de eigen medewerker
+          setGeselecteerdTabMedewerkerId(prev => {
+            if (prev) return prev;
+            const eigen = data.find(m => m.id === medewerker?.id);
+            return eigen?.id ?? data[0]?.id ?? null;
+          });
+        }
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isUitvoerder, planningModus, organisatieId, medewerker?.id]);
+
+  // Reset tab-selectie bij wisselen modus
+  useEffect(() => {
+    if (planningModus === "eigen") {
+      setGeselecteerdTabMedewerkerId(null);
+      setAlleMedewerkers([]);
+    }
+  }, [planningModus]);
+
   const [weekOffset, setWeekOffset] = useState(0);
   const [dayOffset, setDayOffset] = useState(0);
 
@@ -441,6 +503,7 @@ export default function MijnPlanningPage() {
   const loadedFormBonIdRef = useRef(null);
   const formDirtyRef = useRef(false);
   const skipFormDraftSyncRef = useRef(false);
+  const skipAutosaveRef = useRef(true);
 
   // upload state
   const [uploadBusy, setUploadBusy] = useState(false);
@@ -572,6 +635,7 @@ export default function MijnPlanningPage() {
     const selectFallback = "id, werkbonnummer, plandatum, planblok, plan_volgorde, werkomschrijving, interne_referentie, interne_referentie_buitendienst, status, label, created_at, onderweg_start, werkzaamheden_start, werk_straat, werk_huisnummer, werk_toevoeging, werk_postcode, werk_plaats, medewerker_id, gekopieerd_van_werkbon_id, medewerker:medewerkers(naam), klant:klanten(id, naam), werkbon_categorieen ( id, naam )"
 
     const isTotaal = isUitvoerder && planningModus === "totaal";
+    const tabMedewerkerId = isTotaal ? geselecteerdTabMedewerkerId : null;
 
     const runListQuery = (selectClause) => {
       let q = supabase
@@ -585,7 +649,11 @@ export default function MijnPlanningPage() {
         .order("plan_volgorde", { ascending: true, nullsFirst: false })
         .order("planblok", { ascending: true, nullsFirst: true })
         .order("created_at", { ascending: true });
-      if (!isTotaal) q = q.eq("medewerker_id", medewerker.id);
+      if (isTotaal && tabMedewerkerId) {
+        q = q.eq("medewerker_id", tabMedewerkerId);
+      } else if (!isTotaal) {
+        q = q.eq("medewerker_id", medewerker.id);
+      }
       return q;
     };
 
@@ -610,7 +678,7 @@ export default function MijnPlanningPage() {
   useEffect(() => {
     fetchBonnen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [medewerker, rangeStart, rangeEnd, planningModus]);
+  }, [medewerker, rangeStart, rangeEnd, planningModus, geselecteerdTabMedewerkerId]);
 
   // groeperen per dag
   const grouped = useMemo(() => {
@@ -661,6 +729,7 @@ export default function MijnPlanningPage() {
       skipFormDraftSyncRef.current = false;
 
       skipFormDraftSyncRef.current = true;
+      skipAutosaveRef.current = true;
       setForm(emptyWerkbonForm());
 
       setShowHandtekeningVeld(false);
@@ -740,6 +809,7 @@ export default function MijnPlanningPage() {
         if (formDirtyRef.current) {
           loadedFormBonIdRef.current = openingBonId;
           setModalBusy(false);
+          skipAutosaveRef.current = false;
           return;
         }
 
@@ -764,11 +834,13 @@ export default function MijnPlanningPage() {
         const nextForm = mergeDbFormWithDraft(dbForm, draft);
 
         skipFormDraftSyncRef.current = true;
+        skipAutosaveRef.current = true;
         setForm(nextForm);
         formDirtyRef.current = !!draft;
         loadedFormBonIdRef.current = openingBonId;
         setHandtekeningDataUrl("");
         setModalBusy(false);
+        skipAutosaveRef.current = false;
       })
       .catch((err) => {
         setModalBusy(false);
@@ -782,6 +854,44 @@ export default function MijnPlanningPage() {
     if (!selectedBon || !medewerker) return false;
     return normalizeWerkbonStatus(selectedBon.status) === "gepland" && selectedBon.medewerker_id === medewerker.id;
   }, [selectedBon, medewerker]);
+
+  // Tussentijds opslaan tekstvelden (debounced) — voorkomt verlies bij app op achtergrond
+  useEffect(() => {
+    if (!selectedBon?.id || !canEdit || skipAutosaveRef.current) return;
+
+    const timer = setTimeout(async () => {
+      const payload = {};
+      const bev = String(form.bevindingen ?? "").trim();
+      const adv = String(form.advies ?? "").trim();
+      const ref = String(form.interne_referentie_buitendienst ?? "").trim();
+      const existingBev = String(selectedBon.bevindingen ?? "").trim();
+      const existingAdv = String(selectedBon.advies ?? "").trim();
+      const existingRef = String(selectedBon.interne_referentie_buitendienst ?? "").trim();
+
+      if (bev && bev !== existingBev) payload.bevindingen = bev;
+      if (adv && adv !== existingAdv) payload.advies = adv;
+      if (ref && ref !== existingRef) payload.interne_referentie_buitendienst = ref;
+      if (Object.keys(payload).length === 0) return;
+
+      const { error } = await supabase.from("werkbonnen").update(payload).eq("id", selectedBon.id);
+      if (error) {
+        console.warn("Autosave tekstvelden:", error.message);
+        return;
+      }
+      setSelectedBon((prev) => (prev?.id === selectedBon.id ? { ...prev, ...payload } : prev));
+    }, 1500);
+
+    return () => clearTimeout(timer);
+  }, [
+    form.bevindingen,
+    form.advies,
+    form.interne_referentie_buitendienst,
+    selectedBon?.id,
+    selectedBon?.bevindingen,
+    selectedBon?.advies,
+    selectedBon?.interne_referentie_buitendienst,
+    canEdit,
+  ]);
 
   async function uploadFilesToBucket(files) {
     if (!selectedBon) return;
@@ -1038,8 +1148,8 @@ export default function MijnPlanningPage() {
 
     const arbeidsloonTweedeMan = magTweedeManArbeidsloonKiezen(selectedBon) ? !!form.arbeidsloon_tweede_man : false
     const payload = {
-      bevindingen: form.bevindingen || null,
-      advies: form.advies || null,
+      bevindingen: pickTextForSave(form.bevindingen, selectedBon.bevindingen),
+      advies: pickTextForSave(form.advies, selectedBon.advies),
       klus_gereed: !!form.klus_gereed,
       vervolg_nodig: !!form.vervolg_nodig,
       arbeidsloon_tweede_man: arbeidsloonTweedeMan,
@@ -1105,9 +1215,9 @@ export default function MijnPlanningPage() {
         klus_gereed: !!form.klus_gereed,
         vervolg_nodig: !!form.vervolg_nodig,
       }),
-      bevindingen: form.bevindingen || null,
-      advies: form.advies || null,
-      interne_referentie_buitendienst: form.interne_referentie_buitendienst?.trim() || null,
+      bevindingen: pickTextForSave(form.bevindingen, selectedBon.bevindingen),
+      advies: pickTextForSave(form.advies, selectedBon.advies),
+      interne_referentie_buitendienst: pickTextForSave(form.interne_referentie_buitendienst, selectedBon.interne_referentie_buitendienst),
       klus_gereed: !!form.klus_gereed,
       vervolg_nodig: !!form.vervolg_nodig,
       arbeidsloon_tweede_man: arbeidsloonTweedeMan,
@@ -1243,18 +1353,23 @@ export default function MijnPlanningPage() {
     }
   }
 
-  async function handleVerplaatsNaarMij() {
-    if (!selectedBon?.id || !medewerker) return
+  async function handleVerplaatsNaar(doelMedewerkerId) {
+    if (!selectedBon?.id || !doelMedewerkerId) return
     setModalBusy(true)
     setModalError("")
+    setVerplaatsPickerOpen(false)
     try {
       const { error } = await supabase
         .from("werkbonnen")
-        .update({ medewerker_id: medewerker.id })
+        .update({ medewerker_id: doelMedewerkerId })
         .eq("id", selectedBon.id)
       if (error) throw error
       setSelectedBonId(null)
-      setPlanningModus("eigen")
+      if (doelMedewerkerId === medewerker?.id) {
+        setPlanningModus("eigen")
+      } else {
+        setGeselecteerdTabMedewerkerId(doelMedewerkerId)
+      }
       await fetchBonnen()
     } catch (err) {
       setModalError(err?.message ?? "Verplaatsen mislukt")
@@ -2095,7 +2210,10 @@ export default function MijnPlanningPage() {
       {medewerker ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <h1 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "var(--app-text)" }}>
-            {isUitvoerder && planningModus === "totaal" ? "Totale planning" : "Mijn planning"}
+            {isUitvoerder && planningModus === "totaal"
+              ? (alleMedewerkers.find(m => m.id === geselecteerdTabMedewerkerId)?.naam ?? "Totale planning")
+              : "Mijn planning"
+            }
           </h1>
           {isUitvoerder ? (
             <div style={{
@@ -2131,6 +2249,49 @@ export default function MijnPlanningPage() {
               ))}
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {/* ── Medewerker-tabs (uitvoerder totaal-modus) ───────────────────── */}
+      {isUitvoerder && planningModus === "totaal" && alleMedewerkers.length > 0 ? (
+        <div style={{
+          overflowX: "auto",
+          WebkitOverflowScrolling: "touch",
+          marginBottom: 10,
+          paddingBottom: 2,
+        }}>
+          <div style={{
+            display: "flex",
+            gap: 6,
+            minWidth: "max-content",
+          }}>
+            {alleMedewerkers.map((m) => {
+              const isEigen = m.id === medewerker?.id;
+              const isActief = m.id === geselecteerdTabMedewerkerId;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setGeselecteerdTabMedewerkerId(m.id)}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 20,
+                    border: `1px solid ${isActief ? THEME.brand : THEME.border}`,
+                    background: isActief ? THEME.brand : "var(--app-panel)",
+                    color: isActief ? "#fff" : "var(--app-text)",
+                    fontSize: 13,
+                    fontWeight: isActief ? 600 : 400,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    fontFamily: "inherit",
+                    transition: "all 150ms",
+                  }}
+                >
+                  {isEigen ? `★ ${m.naam}` : m.naam}
+                </button>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
@@ -2301,9 +2462,9 @@ export default function MijnPlanningPage() {
                         {categorieNaam ? (
                           <span style={{ fontSize: 11, opacity: 0.9, padding: "2px 6px", borderRadius: 6, background: "rgba(0,0,0,0.15)" }}>{categorieNaam}</span>
                         ) : null}
-                        {isUitvoerder && planningModus === "totaal" ? (
-                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: isEigenBon ? THEME.brand : "rgba(255,255,255,0.15)", color: isEigenBon ? "#fff" : "var(--app-text)", fontWeight: 500 }}>
-                            {b?.medewerker?.naam ?? "Niet toegewezen"}
+                        {isUitvoerder && planningModus === "totaal" && !isEigenBon ? (
+                          <span style={{ fontSize: 11, padding: "2px 7px", borderRadius: 6, background: "rgba(255,255,255,0.15)", color: "var(--app-text)", fontWeight: 500 }}>
+                            👁 Alleen bekijken
                           </span>
                         ) : null}
                       </div>
@@ -2971,34 +3132,79 @@ export default function MijnPlanningPage() {
 
           {/* Footer (sticky) */}
           <div style={{ borderTop: `1px solid ${THEME.border}`, padding: 12, paddingBottom: "calc(12px + env(safe-area-inset-bottom))", display: "flex", gap: 8, flexWrap: "wrap", background: 'var(--app-panel)' }}>
-            {/* Verplaats naar mij — uitvoerder in totaal-modus, voor een bon van iemand anders */}
-            {isUitvoerder && planningModus === "totaal" && selectedBon?.medewerker_id !== medewerker?.id ? (
-              <button
-                type="button"
-                onClick={handleVerplaatsNaarMij}
-                disabled={modalBusy}
-                style={{
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: `1px solid ${THEME.brand}`,
-                  background: THEME.brand,
-                  color: "white",
-                  fontWeight: 500,
-                  fontSize: 13,
-                  fontFamily: "inherit",
-                  cursor: "pointer",
-                  marginBottom: 4,
-                }}
-              >
-                📋 Verplaats naar mijn planning
-              </button>
+            {/* Verplaats naar... — uitvoerder in totaal-modus */}
+            {isUitvoerder && planningModus === "totaal" ? (
+              <div style={{ width: "100%", marginBottom: 4 }}>
+                {!verplaatsPickerOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setVerplaatsPickerOpen(true)}
+                    disabled={modalBusy}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: `1px solid ${THEME.brand}`,
+                      background: "var(--app-panel)",
+                      color: THEME.brand,
+                      fontWeight: 500,
+                      fontSize: 13,
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                    }}
+                  >
+                    📋 Verplaats naar…
+                  </button>
+                ) : (
+                  <div style={{
+                    border: `1px solid ${THEME.brand}`,
+                    borderRadius: 10,
+                    overflow: "hidden",
+                    background: "var(--app-panel)",
+                  }}>
+                    <div style={{ padding: "8px 12px", fontSize: 12, opacity: 0.7, borderBottom: `1px solid ${THEME.border}` }}>
+                      Kies medewerker
+                      <button
+                        type="button"
+                        onClick={() => setVerplaatsPickerOpen(false)}
+                        style={{ float: "right", background: "none", border: "none", cursor: "pointer", color: "var(--app-text)", fontSize: 14, padding: 0 }}
+                      >✕</button>
+                    </div>
+                    {alleMedewerkers.map((m) => {
+                      const isHuidig = m.id === selectedBon?.medewerker_id;
+                      const isEigen = m.id === medewerker?.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          disabled={isHuidig || modalBusy}
+                          onClick={() => handleVerplaatsNaar(m.id)}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "10px 12px",
+                            border: "none",
+                            borderBottom: `1px solid ${THEME.border}`,
+                            background: isHuidig ? "var(--app-panel2)" : "transparent",
+                            color: isHuidig ? "var(--app-muted)" : "var(--app-text)",
+                            fontSize: 13,
+                            fontFamily: "inherit",
+                            cursor: isHuidig ? "default" : "pointer",
+                          }}
+                        >
+                          {isEigen ? "★ " : ""}{m.naam}{isHuidig ? " (huidig)" : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             ) : null}
-            {selectedBon?.werkzaamheden_start && !selectedBon?.werkzaamheden_eind ? (
+            {canEdit && selectedBon?.werkzaamheden_start && !selectedBon?.werkzaamheden_eind ? (
               <button
                 type="button"
                 onClick={handleEindeWerkzaamheden}
-                disabled={!canEdit || modalBusy || uploadBusy}
+                disabled={modalBusy || uploadBusy}
                 style={{
                   flex: 1,
                   minWidth: 140,
@@ -3014,30 +3220,32 @@ export default function MijnPlanningPage() {
               </button>
             ) : null}
 
-            <button
-              type="button"
-              onClick={handleKlaar}
-              disabled={!canEdit || modalBusy || uploadBusy || !selectedBon?.werkzaamheden_eind || (!form.klus_gereed && !form.vervolg_nodig)}
-              style={{
-                flex: 1,
-                minWidth: 100,
-                padding: 12,
-                borderRadius: 12,
-                border: `1px solid ${THEME.brand}`,
-                background: THEME.brand,
-                color: "white",
-                fontWeight: "normal",
-              }}
-              title={
-                !selectedBon?.werkzaamheden_eind
-                  ? "Eerst op 'Einde werkzaamheden' klikken (uren verplicht)"
-                  : !form.klus_gereed && !form.vervolg_nodig
-                    ? "Vink minimaal 'Klus gereed' of 'Vervolgwerk noodzakelijk' aan"
-                    : undefined
-              }
-            >
-              {modalBusy || uploadBusy ? "Bezig..." : "Klaar"}
-            </button>
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={handleKlaar}
+                disabled={modalBusy || uploadBusy || !selectedBon?.werkzaamheden_eind || (!form.klus_gereed && !form.vervolg_nodig)}
+                style={{
+                  flex: 1,
+                  minWidth: 100,
+                  padding: 12,
+                  borderRadius: 12,
+                  border: `1px solid ${THEME.brand}`,
+                  background: THEME.brand,
+                  color: "white",
+                  fontWeight: "normal",
+                }}
+                title={
+                  !selectedBon?.werkzaamheden_eind
+                    ? "Eerst op 'Einde werkzaamheden' klikken (uren verplicht)"
+                    : !form.klus_gereed && !form.vervolg_nodig
+                      ? "Vink minimaal 'Klus gereed' of 'Vervolgwerk noodzakelijk' aan"
+                      : undefined
+                }
+              >
+                {modalBusy || uploadBusy ? "Bezig..." : "Klaar"}
+              </button>
+            ) : null}
           </div>
         </div>
       , document.body) : null}
@@ -3159,3 +3367,4 @@ function SettingsSelectRow({ label, sublabel, value, options, onChange }) {
     </div>
   )
 }
+

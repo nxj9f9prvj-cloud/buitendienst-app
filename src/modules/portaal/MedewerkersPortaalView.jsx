@@ -212,7 +212,7 @@ export default function MedewerkersPortaalView() {
   const [biometricError, setBiometricError] = useState('')
   const [offerSaveBiometric, setOfferSaveBiometric] = useState(false)
 
-  const isAllowedRole = rol === 'buitendienst' || rol === 'binnendienst' || rol === 'admin' || rol === 'monteur'
+  const isAllowedRole = rol === 'buitendienst' || rol === 'uitvoerder' || rol === 'binnendienst' || rol === 'admin' || rol === 'monteur'
   const currentCalendarYear = new Date().getFullYear()
 
   const { overigeDocumenten, loonstrokenByYear } = useMemo(() => {
