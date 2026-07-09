@@ -407,7 +407,7 @@ const BUCKET = "werkbon-fotos";
 
 export default function MijnPlanningPage() {
   const { user, logout } = useAuth();
-  const { organisatieId, isUitvoerder: isUitvoerderCtx, medewerkerId: huidigMedewerkerId } = useErpRole();
+  const { organisatieId, isUitvoerder: isUitvoerderCtx, isAdmin: isAdminCtx, medewerkerId: huidigMedewerkerId } = useErpRole();
   const { logoUrl, naam } = useOrganisatie();
   const { prefs, setPref } = useAppPrefs();
 
@@ -431,8 +431,10 @@ export default function MijnPlanningPage() {
   // medewerker
   const [medewerker, setMedewerker] = useState(null);
   const [medewerkerErr, setMedewerkerErr] = useState("");
-  // uitvoerder check: via context OF via medewerker.rol (fallback als context nog niet geladen)
-  const isUitvoerder = isUitvoerderCtx || String(medewerker?.rol ?? '').toLowerCase() === 'uitvoerder';
+  // uitvoerder/admin check: via context OF via medewerker.rol (fallback als context nog niet geladen)
+  // Admin krijgt dezelfde planning-features als uitvoerder (totale planning, tabs, verplaatsen)
+  const rolNorm = String(medewerker?.rol ?? '').toLowerCase();
+  const isUitvoerder = isUitvoerderCtx || isAdminCtx || rolNorm === 'uitvoerder' || rolNorm === 'admin';
 
   // views
   const [view, setView] = useState(() => prefs.defaultView || "werkweek"); // vandaag | werkweek | heleweek
@@ -444,7 +446,8 @@ export default function MijnPlanningPage() {
   const [geselecteerdTabMedewerkerId, setGeselecteerdTabMedewerkerId] = useState(null);
   const [verplaatsPickerOpen, setVerplaatsPickerOpen] = useState(false);
 
-  // Fetch alle buitendienst/uitvoerder medewerkers voor de organisatie (alleen in totaal-modus)
+  // Fetch alle buitendienst/uitvoerder/admin medewerkers voor de organisatie (alleen in totaal-modus)
+  // Admin verschijnt alleen als 'toon_in_planning' aangevinkt is (zelfde filter als de rest)
   useEffect(() => {
     if (!isUitvoerder || planningModus !== "totaal" || !organisatieId) return;
     supabase
@@ -453,7 +456,7 @@ export default function MijnPlanningPage() {
       .eq("organisatie_id", organisatieId)
       .eq("actief", true)
       .eq("toon_in_planning", true)
-      .in("rol", ["buitendienst", "uitvoerder"])
+      .in("rol", ["buitendienst", "uitvoerder", "admin"])
       .order("naam", { ascending: true })
       .then(({ data }) => {
         if (data?.length) {

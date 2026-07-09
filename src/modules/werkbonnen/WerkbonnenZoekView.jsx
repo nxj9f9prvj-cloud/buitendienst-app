@@ -63,7 +63,7 @@ export default function WerkbonnenZoekView({ logoUrl, naam }) {
   const [lightboxUrl, setLightboxUrl] = useState(null)
   const debounceRef = useRef(null)
 
-  const isMonteur = rol === 'buitendienst' || rol === 'uitvoerder' || rol === 'monteur'
+  const isMonteur = rol === 'buitendienst' || rol === 'uitvoerder' || rol === 'monteur' || rol === 'admin'
 
   const search = useCallback(async (q) => {
     if (!organisatieId) return
