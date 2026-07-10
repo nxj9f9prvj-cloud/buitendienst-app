@@ -698,8 +698,10 @@ export default function MijnPlanningPage() {
         const pb = planblokOrder(b?.planblok);
         if (pa !== pb) return pa - pb;
 
-        const oa = Number.isFinite(Number(a?.plan_volgorde)) ? Number(a.plan_volgorde) : 999999;
-        const ob = Number.isFinite(Number(b?.plan_volgorde)) ? Number(b.plan_volgorde) : 999999;
+        // NULL/ontbrekende plan_volgorde achteraan, identiek aan het binnendienst-planbord.
+        // Let op: Number(null) === 0, dus expliciete null-check vereist.
+        const oa = a?.plan_volgorde == null ? 999999 : (Number.isFinite(Number(a.plan_volgorde)) ? Number(a.plan_volgorde) : 999999);
+        const ob = b?.plan_volgorde == null ? 999999 : (Number.isFinite(Number(b.plan_volgorde)) ? Number(b.plan_volgorde) : 999999);
         if (oa !== ob) return oa - ob;
 
         return String(a?.werkbonnummer ?? a?.id ?? "").localeCompare(String(b?.werkbonnummer ?? b?.id ?? ""));
