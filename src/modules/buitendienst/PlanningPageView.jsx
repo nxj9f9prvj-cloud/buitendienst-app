@@ -1827,7 +1827,7 @@ export default function MijnPlanningPage() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: THEME.bg }}>
-        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: 16 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: 16 }}>
         {/* Zelfde header als planning-scherm */}
         <div
           style={{
@@ -2046,7 +2046,7 @@ export default function MijnPlanningPage() {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: "var(--app-bg, #0a1628)" }}>
         {/* Scrollable content */}
-        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
           <WerkbonnenZoekView logoUrl={logoUrl} naam={naam} />
         </div>
 
@@ -2059,7 +2059,7 @@ export default function MijnPlanningPage() {
   if (page === "portaal") {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: THEME.bg }}>
-        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
           <MedewerkersPortaalView />
         </div>
         {renderBottomNav()}
@@ -2071,7 +2071,7 @@ export default function MijnPlanningPage() {
   if (page === "instellingen") {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: THEME.bg }}>
-        <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: 16 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: 16 }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
           <img
@@ -2176,7 +2176,7 @@ export default function MijnPlanningPage() {
       style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", background: THEME.bg }}
       data-page="buitendienst-planning"
     >
-      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "12px 16px 16px" }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", padding: "12px 16px 16px" }}>
 
       {/* ── Compacte header ─────────────────────────────────────────────── */}
       <div style={{

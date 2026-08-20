@@ -127,6 +127,8 @@
 html {
   /* Verhindert rubber-band/bounce scroll op iOS WebView */
   height: 100%;
+  height: 100dvh;
+  max-height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
 }
@@ -134,22 +136,34 @@ html {
 body {
   margin: 0;
   height: 100%;
+  height: 100dvh;
+  max-height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
   background: linear-gradient(180deg, var(--app-bg3) 0%, var(--app-bg2) 28%, var(--app-bg) 100%);
   color: var(--app-text);
   /* iOS safe areas: Dynamic Island (boven) en home indicator (onder) */
-  padding-top: env(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: 0; /* Bottom nav beheert eigen safe-area-inset-bottom */
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 #root {
   height: 100%;
+  max-height: 100%;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* iOS WKWebView: flex-kinderen met min-height:auto duwen de onderbalk uit beeld */
+#root > * {
+  flex: 1;
+  min-height: 0;
+  max-height: 100%;
+  width: 100%;
 }
 
 a {
@@ -175,7 +189,8 @@ a:hover {
 /* Dit voorkomt het iOS WebView probleem waarbij fixed-elementen meescrolden. */
 .app-bottom-nav {
   flex-shrink: 0;
-  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 40;
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
   background: #060d1a;
   border-top: 1px solid rgba(151, 170, 196, 0.14);
   display: flex;

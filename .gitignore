@@ -26,3 +26,8 @@ dist-ssr
 # Firebase / Google Services — bevatten API keys, niet in Git
 android/app/google-services.json
 ios/App/GoogleService-Info.plist
+
+# Android signing — nooit committen
+*.jks
+*.keystore
+android/keystore.properties
