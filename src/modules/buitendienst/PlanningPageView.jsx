@@ -1680,9 +1680,9 @@ export default function MijnPlanningPage() {
     setAlleBonnenErr("Onbekende context.");
   }
 
-  // als je naar Alle Werkbonnen gaat: direct laden (alleen als context gezet is)
+  // als je naar voorgaande bonnen / historie gaat: direct laden
   useEffect(() => {
-    if (page !== "alleWerkbonnen" || !alleBonnenContext) return;
+    if (page !== "werkbonHistorie" || !alleBonnenContext) return;
     loadAlleBonnen(alleBonnenContext);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, alleBonnenContext]);
