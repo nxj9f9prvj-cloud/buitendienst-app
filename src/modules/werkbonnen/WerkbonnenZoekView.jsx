@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 import { useErpRole } from '../../auth/useErpRole'
+import { mapWerkbonMaterialen, WERKBON_MATERIEEL_SELECT } from '../../lib/werkbonMaterialenDisplay'
 
 const STATUS_COLOR = {
   nieuw:              '#f59e0b',
@@ -52,6 +53,88 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
+function firstText(...values) {
+  for (const v of values) {
+    const s = String(v ?? '').trim()
+    if (s) return s
+  }
+  return ''
+}
+
+function formatAdres({ straat, huisnummer, toevoeging, postcode, plaats } = {}) {
+  const straatRegel = [straat, huisnummer, toevoeging].filter(Boolean).join(' ')
+  const plaatsRegel = [postcode, plaats].filter(Boolean).join(' ')
+  return [straatRegel, plaatsRegel].filter(Boolean).join(', ')
+}
+
+function getKlantTelefoon(klant) {
+  return firstText(
+    klant?.telefoon,
+    klant?.telefoonnummer,
+    klant?.telefoon_werkbon,
+    klant?.mobiel,
+    klant?.tel,
+  )
+}
+
+function getKlantEmail(klant) {
+  return firstText(klant?.email_werkbon, klant?.email)
+}
+
+function getWerkadres(bon) {
+  const fromBon = formatAdres({
+    straat: bon?.werk_straat,
+    huisnummer: bon?.werk_huisnummer,
+    toevoeging: bon?.werk_toevoeging,
+    postcode: bon?.werk_postcode,
+    plaats: bon?.werk_plaats,
+  })
+  if (fromBon) return fromBon
+  if (bon?.werkadres_gelijk_aan_vestiging && bon?.klant) {
+    return formatAdres({
+      straat: bon.klant.straat,
+      huisnummer: bon.klant.huisnummer,
+      toevoeging: bon.klant.toevoeging,
+      postcode: bon.klant.postcode,
+      plaats: bon.klant.plaats,
+    })
+  }
+  return ''
+}
+
+function getKlantadres(klant) {
+  if (!klant) return ''
+  return formatAdres({
+    straat: klant.straat,
+    huisnummer: klant.huisnummer,
+    toevoeging: klant.toevoeging,
+    postcode: klant.postcode,
+    plaats: klant.plaats,
+  })
+}
+
+const DETAIL_SELECT = [
+  'id', 'werkbonnummer', 'status', 'plandatum', 'created_at',
+  'werk_straat', 'werk_huisnummer', 'werk_toevoeging', 'werk_postcode', 'werk_plaats',
+  'werkadres_gelijk_aan_vestiging',
+  'werkomschrijving', 'bevindingen', 'advies',
+  'interne_referentie', 'interne_referentie_buitendienst', 'klantreferentie',
+  'fotos_urls', 'materialen',
+  'klus_gereed', 'vervolg_nodig',
+  'klant:klanten(*)',
+  WERKBON_MATERIEEL_SELECT,
+].join(', ')
+
+const DETAIL_SELECT_FALLBACK = [
+  'id', 'werkbonnummer', 'status', 'plandatum', 'created_at',
+  'werk_straat', 'werk_huisnummer', 'werk_toevoeging', 'werk_postcode', 'werk_plaats',
+  'werkomschrijving', 'bevindingen', 'advies',
+  'interne_referentie', 'interne_referentie_buitendienst', 'klantreferentie',
+  'fotos_urls', 'materialen',
+  'klus_gereed', 'vervolg_nodig',
+  'klant:klanten(*)',
+].join(', ')
+
 export default function WerkbonnenZoekView({ logoUrl, naam }) {
   const { rol, loading: roleLoading, organisatieId } = useErpRole()
 
@@ -60,6 +143,9 @@ export default function WerkbonnenZoekView({ logoUrl, naam }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [expandedId, setExpandedId] = useState(null)
+  const [detailsById, setDetailsById] = useState({})
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState('')
   const [lightboxUrl, setLightboxUrl] = useState(null)
   const debounceRef = useRef(null)
 
@@ -141,6 +227,48 @@ export default function WerkbonnenZoekView({ logoUrl, naam }) {
     debounceRef.current = setTimeout(() => search(query), 350)
     return () => clearTimeout(debounceRef.current)
   }, [query, search])
+
+  useEffect(() => {
+    if (!expandedId || !organisatieId) return
+    if (detailsById[expandedId]) return
+
+    let cancelled = false
+    setDetailLoading(true)
+    setDetailError('')
+
+    const load = async () => {
+      const run = (selectClause) =>
+        supabase
+          .from('werkbonnen')
+          .select(selectClause)
+          .eq('id', expandedId)
+          .eq('organisatie_id', organisatieId)
+          .single()
+
+      let { data, error: qError } = await run(DETAIL_SELECT)
+      if (qError) {
+        const retry = await run(DETAIL_SELECT_FALLBACK)
+        data = retry.data
+        qError = retry.error
+      }
+
+      if (cancelled) return
+      setDetailLoading(false)
+      if (qError) {
+        setDetailError(qError.message || 'Details laden mislukt.')
+        return
+      }
+      setDetailsById((prev) => ({ ...prev, [expandedId]: data }))
+    }
+
+    load().catch((err) => {
+      if (cancelled) return
+      setDetailLoading(false)
+      setDetailError(err?.message || 'Details laden mislukt.')
+    })
+
+    return () => { cancelled = true }
+  }, [expandedId, organisatieId, detailsById])
 
   if (roleLoading) return (
     <div style={{ padding: 24, color: 'var(--app-muted)' }}>Laden…</div>
@@ -316,69 +444,22 @@ export default function WerkbonnenZoekView({ logoUrl, naam }) {
                   : `Aangemeld: ${formatDate(bon.created_at)}`}
               </div>
 
-              {/* Uitklapdetail (read-only) */}
               {expanded && (
-                <div
-                  style={{
-                    marginTop: 12,
-                    paddingTop: 12,
-                    borderTop: '1px solid var(--app-border)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                  }}
-                  onClick={e => e.stopPropagation()}
-                >
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                    <InfoBlock label="Werkbonnummer" value={bon.werkbonnummer} />
-                    <InfoBlock label="Status" value={statusLabel(bon.status)} />
-                    <InfoBlock label="Klantnaam" value={bon.klant?.naam} />
-                    <InfoBlock label="Plandatum" value={formatDate(bon.plandatum)} />
-                  </div>
-                  {(adres || plaatsPc) && (
-                    <InfoBlock label="Werkadres" value={[adres, plaatsPc].filter(Boolean).join(', ')} />
-                  )}
-                  {bon.werkomschrijving && (
-                    <InfoBlock label="Omschrijving" value={bon.werkomschrijving} />
-                  )}
-
-                  {/* Foto's */}
-                  {Array.isArray(bon.fotos_urls) && bon.fotos_urls.length > 0 && (
-                    <div>
-                      <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 6 }}>
-                        Foto's ({bon.fotos_urls.length})
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
-                        {bon.fotos_urls.map((url, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={e => { e.stopPropagation(); setLightboxUrl(url); }}
-                            style={{
-                              padding: 0, border: '1px solid var(--app-border)',
-                              borderRadius: 8, overflow: 'hidden',
-                              background: 'var(--app-panel)', cursor: 'pointer',
-                              aspectRatio: '1 / 1',
-                            }}
-                          >
-                            <img
-                              src={url}
-                              alt={`foto ${i + 1}`}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                            />
-                          </button>
-                        ))}
-                      </div>
+                <div onClick={e => e.stopPropagation()}>
+                  {detailLoading && !detailsById[bon.id] ? (
+                    <div style={{
+                      marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--app-border)',
+                      fontSize: 13, color: 'var(--app-muted)',
+                    }}>
+                      Details laden…
                     </div>
+                  ) : (
+                    <WerkbonDetail
+                      bon={detailsById[bon.id] || bon}
+                      detailError={detailError}
+                      onOpenFoto={setLightboxUrl}
+                    />
                   )}
-
-                  <div style={{
-                    marginTop: 2, padding: '6px 10px', borderRadius: 8,
-                    background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)',
-                    fontSize: 11, color: '#f87171',
-                  }}>
-                    Alleen-lezen · aanpassen via de planningstool in het ERP
-                  </div>
                 </div>
               )}
             </button>
@@ -424,11 +505,145 @@ export default function WerkbonnenZoekView({ logoUrl, naam }) {
   )
 }
 
-function InfoBlock({ label, value }) {
+function WerkbonDetail({ bon, detailError, onOpenFoto }) {
+  const klant = bon?.klant || {}
+  const telefoon = getKlantTelefoon(klant)
+  const email = getKlantEmail(klant)
+  const klantadres = getKlantadres(klant)
+  const werkadres = getWerkadres(bon)
+  const { lines: materiaalRegels } = mapWerkbonMaterialen(bon)
+  const fotos = Array.isArray(bon?.fotos_urls) ? bon.fotos_urls.filter(Boolean) : []
+  const listAdres = [bon.werk_straat, bon.werk_huisnummer, bon.werk_toevoeging].filter(Boolean).join(' ')
+  const listPlaatsPc = [bon.werk_postcode, bon.werk_plaats].filter(Boolean).join(' ')
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        paddingTop: 12,
+        borderTop: '1px solid var(--app-border)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      {detailError ? (
+        <div style={{ fontSize: 12, color: '#f87171' }}>{detailError}</div>
+      ) : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <InfoBlock label="Werkbonnummer" value={bon.werkbonnummer} />
+        <InfoBlock label="Status" value={statusLabel(bon.status)} />
+        <InfoBlock label="Klantnaam" value={klant.naam} />
+        <InfoBlock label="Plandatum" value={formatDate(bon.plandatum)} />
+      </div>
+
+      <InfoBlock label="Klantadres" value={klantadres} />
+      <InfoBlock label="Telefoonnummer">
+        {telefoon ? <ContactLink type="tel" value={telefoon} /> : '—'}
+      </InfoBlock>
+      <InfoBlock label="E-mailadres">
+        {email ? <ContactLink type="mailto" value={email} /> : '—'}
+      </InfoBlock>
+      <InfoBlock
+        label="Werkadres"
+        value={werkadres || [listAdres, listPlaatsPc].filter(Boolean).join(', ')}
+      />
+      <InfoBlock label="Interne referentie" value={bon.interne_referentie} />
+      <InfoBlock label="Aanvulling interne referentie" value={bon.interne_referentie_buitendienst} />
+      <InfoBlock label="Werkomschrijving" value={bon.werkomschrijving} />
+      <InfoBlock label="Advies" value={bon.advies} />
+
+      <div>
+        <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 6 }}>Materialen gebruikt</div>
+        {materiaalRegels.length === 0 ? (
+          <div style={{ fontSize: 13, color: 'var(--app-text)' }}>— geen materialen —</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {materiaalRegels.map((m, i) => (
+              <div
+                key={`${m.artikelnummer || m.naam}-${i}`}
+                style={{ fontSize: 13, color: 'var(--app-text)' }}
+              >
+                {m.naam || '—'}
+                {(m.aantal || m.eenheid || m.artikelnummer) ? (
+                  <span style={{ fontSize: 12, color: 'var(--app-muted)' }}>
+                    {' · '}
+                    {[
+                      m.aantal ? `Aantal: ${m.aantal}` : null,
+                      m.eenheid || null,
+                      m.artikelnummer ? `Nr: ${m.artikelnummer}` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {fotos.length > 0 && (
+        <div>
+          <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 6 }}>
+            Foto's ({fotos.length})
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+            {fotos.map((url, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={e => { e.stopPropagation(); onOpenFoto(url) }}
+                style={{
+                  padding: 0, border: '1px solid var(--app-border)',
+                  borderRadius: 8, overflow: 'hidden',
+                  background: 'var(--app-panel)', cursor: 'pointer',
+                  aspectRatio: '1 / 1',
+                }}
+              >
+                <img
+                  src={url}
+                  alt={`foto ${i + 1}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{
+        marginTop: 2, padding: '6px 10px', borderRadius: 8,
+        background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.18)',
+        fontSize: 11, color: '#f87171',
+      }}>
+        Alleen-lezen · aanpassen via de planningstool in het ERP
+      </div>
+    </div>
+  )
+}
+
+function ContactLink({ type, value }) {
+  const v = String(value || '').trim()
+  if (!v) return '—'
+  const href = type === 'tel' ? `tel:${v.replace(/[^\d+]/g, '')}` : `mailto:${v}`
+  return (
+    <a
+      href={href}
+      style={{ color: 'var(--app-accent)', textDecoration: 'underline' }}
+    >
+      {v}
+    </a>
+  )
+}
+
+function InfoBlock({ label, value, children }) {
+  const content = children ?? (value || '—')
   return (
     <div>
       <div style={{ fontSize: 11, opacity: 0.5, marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 13, color: 'var(--app-text)' }}>{value || '—'}</div>
+      <div style={{ fontSize: 13, color: 'var(--app-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+        {content || '—'}
+      </div>
     </div>
   )
 }
